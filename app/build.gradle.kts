@@ -40,6 +40,8 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
+        // 全局 @OptIn(UnstableApi::class):多数 Media3 编辑 API 带 @UnstableApi(§10.4)
+        optIn.add("androidx.media3.common.util.UnstableApi")
     }
 }
 
@@ -52,6 +54,12 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // Media3 全家桶:统一锁同一具体版本(见 gradle/libs.versions.toml 的 media3)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.effect)
+    implementation(libs.androidx.media3.transformer)
+    implementation(libs.androidx.media3.common)
+    implementation(libs.androidx.media3.ui)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
