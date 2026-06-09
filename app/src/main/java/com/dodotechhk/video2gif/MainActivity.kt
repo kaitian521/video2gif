@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
-import com.dodotechhk.video2gif.ui.ImportScreen
+import com.dodotechhk.video2gif.ui.Video2gifApp
 import com.dodotechhk.video2gif.ui.theme.Video2gifTheme
 
 class MainActivity : ComponentActivity() {
@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             Video2gifTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    ImportScreen(modifier = Modifier.padding(innerPadding))
+                    Video2gifApp(modifier = Modifier.padding(innerPadding))
                 }
             }
         }

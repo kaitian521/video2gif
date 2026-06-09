@@ -7,9 +7,9 @@ import android.net.Uri
  *
  * 已有字段:
  * - P1 `sourceUri` / `sourceLocalPath` / `durationMs`
+ * - P2 `clipStartMs` / `clipEndMs`
  *
  * 后续阶段继续往里加:
- * - P2 `clipStartMs` / `clipEndMs`
  * - P3 `targetHeight`
  * - P4 `aspect`
  * - P5 `scaleX` / `scaleY` / `rotation`
@@ -23,4 +23,8 @@ data class EditState(
     val sourceLocalPath: String? = null,
     /** 源视频总时长(ms)。 */
     val durationMs: Long = 0L,
+    /** 截取区间起点(ms),默认从 0。仅存于此,导出时才折进 ClippingConfiguration(§3)。 */
+    val clipStartMs: Long = 0L,
+    /** 截取区间终点(ms)。约束见 [ClipConstraints]。 */
+    val clipEndMs: Long = 0L,
 )

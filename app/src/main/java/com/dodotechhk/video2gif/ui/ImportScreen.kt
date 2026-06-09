@@ -25,47 +25,54 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.VideoImporter
+import com.dodotechhk.video2gif.defaultClipEndMs
 import kotlinx.coroutines.launch
-import java.io.File
 
-/** 导入页 UI 状态。 */
-private sealed interface ImportUiState {
-    data object Idle : ImportUiState
-    data object Loading : ImportUiState
-    data class Loaded(val state: EditState) : ImportUiState
-    data class Rejected(val reason: String) : ImportUiState
+/** 导入页 UI 状态(成功后通过回调离开本页,故无 Loaded 态)。 */
+private sealed interface ImportStatus {
+    data object Idle : ImportStatus
+    data object Loading : ImportStatus
+    data class Rejected(val reason: String) : ImportStatus
 }
 
 /**
  * P1 导入页:相册选视频 → 校验时长 → 解析可读本地路径。
- * 用照片选择器 [ActivityResultContracts.PickVisualMedia](无需存储权限)。
+ * 成功后构造初始 [EditState](含默认区间 [0, min(duration, 10s)])并回调 [onImported]。
  */
 @Composable
-fun ImportScreen(modifier: Modifier = Modifier) {
+fun ImportScreen(
+    onImported: (EditState) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var ui by remember { mutableStateOf<ImportUiState>(ImportUiState.Idle) }
+    var status by remember { mutableStateOf<ImportStatus>(ImportStatus.Idle) }
 
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        ui = ImportUiState.Loading
+        status = ImportStatus.Loading
         scope.launch {
-            ui = when (val result = VideoImporter.import(context, uri)) {
-                is VideoImporter.Result.Success -> ImportUiState.Loaded(
-                    EditState(
-                        sourceUri = result.uri,
-                        sourceLocalPath = result.localPath,
-                        durationMs = result.durationMs,
+            when (val result = VideoImporter.import(context, uri)) {
+                is VideoImporter.Result.Success -> {
+                    status = ImportStatus.Idle
+                    onImported(
+                        EditState(
+                            sourceUri = result.uri,
+                            sourceLocalPath = result.localPath,
+                            durationMs = result.durationMs,
+                            clipStartMs = 0L,
+                            clipEndMs = defaultClipEndMs(result.durationMs),
+                        )
                     )
-                )
+                }
 
-                is VideoImporter.Result.TooShort -> ImportUiState.Rejected(
+                is VideoImporter.Result.TooShort -> status = ImportStatus.Rejected(
                     "视频太短(${result.durationMs} ms),需 > ${VideoImporter.MIN_DURATION_MS} ms"
                 )
 
-                is VideoImporter.Result.Error -> ImportUiState.Rejected(result.message)
+                is VideoImporter.Result.Error -> status = ImportStatus.Rejected(result.message)
             }
         }
     }
@@ -83,43 +90,22 @@ fun ImportScreen(modifier: Modifier = Modifier) {
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                 )
             },
-            enabled = ui !is ImportUiState.Loading,
+            enabled = status != ImportStatus.Loading,
         ) {
             Text("从相册选择视频")
         }
 
         Spacer(Modifier.height(24.dp))
 
-        when (val state = ui) {
-            ImportUiState.Idle ->
+        when (val s = status) {
+            ImportStatus.Idle ->
                 Text("请选择一个 > ${VideoImporter.MIN_DURATION_MS}ms 的视频")
 
-            ImportUiState.Loading ->
+            ImportStatus.Loading ->
                 CircularProgressIndicator()
 
-            is ImportUiState.Rejected ->
-                Text("✗ ${state.reason}", color = MaterialTheme.colorScheme.error)
-
-            is ImportUiState.Loaded ->
-                ImportedInfo(state.state)
+            is ImportStatus.Rejected ->
+                Text("✗ ${s.reason}", color = MaterialTheme.colorScheme.error)
         }
-    }
-}
-
-@Composable
-private fun ImportedInfo(state: EditState) {
-    // 运行时复核 sourceLocalPath 真实可读(DoD:exists() && canRead() 为真)。
-    val readable = remember(state.sourceLocalPath) {
-        state.sourceLocalPath?.let { File(it).run { exists() && canRead() } } == true
-    }
-    Column(horizontalAlignment = Alignment.Start) {
-        Text("✓ 导入成功,可进入下一步(P2)", color = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(12.dp))
-        Text("时长:${state.durationMs} ms")
-        Spacer(Modifier.height(8.dp))
-        Text("sourceLocalPath:")
-        Text(state.sourceLocalPath ?: "—")
-        Spacer(Modifier.height(8.dp))
-        Text("exists() && canRead():$readable")
     }
 }
