@@ -25,11 +25,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import com.dodotechhk.video2gif.ClipConstraints
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.clampEndMs
 import com.dodotechhk.video2gif.clampStartMs
+import com.dodotechhk.video2gif.exceedsMaxClip
 import com.dodotechhk.video2gif.isValidClip
 
 /**
@@ -44,6 +47,7 @@ fun TrimScreen(
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val length = state.clipEndMs - state.clipStartMs
     val valid = isValidClip(state.clipStartMs, state.clipEndMs, state.durationMs)
 
@@ -125,7 +129,7 @@ fun TrimScreen(
         }
 
         Text(
-            "约束:${ClipConstraints.MIN_CLIP_MS}ms ≤ 时长 ≤ ${ClipConstraints.MAX_CLIP_MS}ms",
+            "最短 ${ClipConstraints.MIN_CLIP_MS}ms;超过 ${ClipConstraints.MAX_CLIP_MS / 1000}s 可继续滑动,下一步会提示",
             style = MaterialTheme.typography.bodySmall,
         )
 
@@ -134,7 +138,21 @@ fun TrimScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = onBack) { Text("重新选择") }
-            Button(onClick = onNext, enabled = valid) { Text("下一步(P3 预览)") }
+            Button(
+                onClick = {
+                    // 超 10s 在此拦下并提示,不进预览;否则放行。
+                    if (exceedsMaxClip(state.clipStartMs, state.clipEndMs)) {
+                        Toast.makeText(
+                            context,
+                            "最多选 ${ClipConstraints.MAX_CLIP_MS / 1000} 秒",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    } else {
+                        onNext()
+                    }
+                },
+                enabled = valid,
+            ) { Text("下一步(P3 预览)") }
         }
     }
 }

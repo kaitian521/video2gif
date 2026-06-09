@@ -27,4 +27,9 @@ data class EditState(
     val clipStartMs: Long = 0L,
     /** 截取区间终点(ms)。约束见 [ClipConstraints]。 */
     val clipEndMs: Long = 0L,
+    /**
+     * 预览/导出的目标高度(px),宽度由内容比例派生。取偶数以满足 H.264 编码器对偶数维度的要求;
+     * 派生宽度的偶数对齐由导出端 encoder 兜底。详见 [buildVideoEffects] 的 `Presentation`(P3)。
+     */
+    val targetHeight: Int = 720,
 )

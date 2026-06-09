@@ -36,7 +36,7 @@ fun VideoPreview(
 ) {
     val context = LocalContext.current
 
-    // 仅当源切换时重建播放器;改选区不重建。
+    // 仅当源切换时重建播放器;改选区/效果不重建。
     val player = remember(state.sourceUri) {
         ExoPlayer.Builder(context).build().apply {
             setVideoEffects(buildVideoEffects(state)) // 硬约束:prepare 前至少调一次
@@ -46,6 +46,12 @@ fun VideoPreview(
             seekTo(state.clipStartMs)
             prepare()
         }
+    }
+
+    // 效果相关 state 变化时重建效果链(P4–P6 手势走这里)。
+    // 用各效果字段做 key:任一变化即 re-apply,prepare 后再次 setVideoEffects 合法。
+    LaunchedEffect(player, state.targetHeight) {
+        player.setVideoEffects(buildVideoEffects(state))
     }
 
     // 用 rememberUpdatedState 让循环始终读到最新选区。

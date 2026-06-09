@@ -21,9 +21,9 @@ class ClipConstraintsTest {
     }
 
     @Test
-    fun clamp_end_enforces_max_length() {
-        // start=2000,end 拖到 29000 → 超 10s,夹到 12000
-        assertEquals(12_000L, clampEndMs(desiredEndMs = 29_000L, startMs = 2_000L, durationMs = 30_000L))
+    fun clamp_end_does_not_cap_at_max_length() {
+        // start=2000,end 拖到 29000 → 超 10s 不再夹,只受 duration 约束 → 29000
+        assertEquals(29_000L, clampEndMs(desiredEndMs = 29_000L, startMs = 2_000L, durationMs = 30_000L))
     }
 
     @Test
@@ -39,9 +39,9 @@ class ClipConstraintsTest {
     }
 
     @Test
-    fun clamp_start_enforces_max_length() {
-        // end=15000,start 拖到 0 → 超 10s,夹到 5000
-        assertEquals(5_000L, clampStartMs(desiredStartMs = 0L, endMs = 15_000L))
+    fun clamp_start_does_not_cap_at_max_length() {
+        // end=15000,start 拖到 0 → 超 10s 不再夹,start 可到 0
+        assertEquals(0L, clampStartMs(desiredStartMs = 0L, endMs = 15_000L))
     }
 
     @Test
@@ -53,9 +53,16 @@ class ClipConstraintsTest {
     @Test
     fun valid_clip_boundaries() {
         assertTrue(isValidClip(0L, 500L, 30_000L))      // 恰好下限
-        assertTrue(isValidClip(0L, 10_000L, 30_000L))   // 恰好上限
+        assertTrue(isValidClip(0L, 10_000L, 30_000L))   // 10s
+        assertTrue(isValidClip(0L, 10_001L, 30_000L))   // 超 10s 仍算结构合法(上限是软约束)
         assertFalse(isValidClip(0L, 499L, 30_000L))     // 过短
-        assertFalse(isValidClip(0L, 10_001L, 30_000L))  // 过长
         assertFalse(isValidClip(0L, 5_000L, 4_000L))    // end 超出总时长
+    }
+
+    @Test
+    fun exceeds_max_only_above_10s() {
+        assertFalse(exceedsMaxClip(0L, 10_000L))  // 恰好 10s 不算超
+        assertTrue(exceedsMaxClip(0L, 10_001L))   // 超 1ms 即算超
+        assertTrue(exceedsMaxClip(2_000L, 15_000L))
     }
 }
