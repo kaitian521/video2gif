@@ -62,6 +62,8 @@ fun ImportScreen(
                             sourceUri = result.uri,
                             sourceLocalPath = result.localPath,
                             durationMs = result.durationMs,
+                            displayWidth = result.displayWidth,
+                            displayHeight = result.displayHeight,
                             clipStartMs = 0L,
                             clipEndMs = defaultClipEndMs(result.durationMs),
                         )

@@ -25,11 +25,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import com.dodotechhk.video2gif.ClipConstraints
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.clampEndMs
 import com.dodotechhk.video2gif.clampStartMs
+import com.dodotechhk.video2gif.exceedsMaxClip
 import com.dodotechhk.video2gif.isValidClip
 
 /**
@@ -44,6 +47,7 @@ fun TrimScreen(
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val length = state.clipEndMs - state.clipStartMs
     val valid = isValidClip(state.clipStartMs, state.clipEndMs, state.durationMs)
 
@@ -61,15 +65,35 @@ fun TrimScreen(
         Text("截取区间", style = MaterialTheme.typography.titleLarge)
         Text("源时长:${state.durationMs} ms", style = MaterialTheme.typography.bodyMedium)
 
-        // 视频预览:循环播放当前选区。占据中间可用空间。
-        VideoPreview(
-            state = state,
-            onPositionChange = { positionMs = it },
-            restartSignal = restartTrigger,
+        // 视频预览:**高度固定**,宽度按源视频显示比例自适应,无黑边。
+        // 盒子与视频宽高比严格一致 → PlayerView 默认 FIT 不产生 letterbox。
+        // 超宽视频(宽 > 可用宽度)时按可用宽度回退,避免横向溢出。
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            val ratio = state.sourceAspectRatio
+            val previewHeight = 320.dp
+            val w = minOf(previewHeight * ratio, maxWidth)
+            val h = w / ratio
+            VideoPreview(
+                state = state,
+                onPositionChange = { positionMs = it },
+                onVideoDisplaySize = { vwPx, vhPx ->
+                    // 用播放器真实尺寸校正源宽高比(MMR 方形像素假设可能不符);早校正,预览页直接用对。
+                    val reported = vwPx.toFloat() / vhPx
+                    if (kotlin.math.abs(reported - state.sourceAspectRatio) > 0.01f) {
+                        onStateChange(state.copy(displayWidth = vwPx, displayHeight = vhPx))
+                    }
+                },
+                restartSignal = restartTrigger,
+                modifier = Modifier
+                    .width(w)
+                    .height(h),
+            )
+        }
 
         Text(
             "区间:${state.clipStartMs} … ${state.clipEndMs} ms(时长 $length ms)",
@@ -125,7 +149,7 @@ fun TrimScreen(
         }
 
         Text(
-            "约束:${ClipConstraints.MIN_CLIP_MS}ms ≤ 时长 ≤ ${ClipConstraints.MAX_CLIP_MS}ms",
+            "最短 ${ClipConstraints.MIN_CLIP_MS}ms;超过 ${ClipConstraints.MAX_CLIP_MS / 1000}s 可继续滑动,下一步会提示",
             style = MaterialTheme.typography.bodySmall,
         )
 
@@ -134,7 +158,21 @@ fun TrimScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = onBack) { Text("重新选择") }
-            Button(onClick = onNext, enabled = valid) { Text("下一步(P3 预览)") }
+            Button(
+                onClick = {
+                    // 超 10s 在此拦下并提示,不进预览;否则放行。
+                    if (exceedsMaxClip(state.clipStartMs, state.clipEndMs)) {
+                        Toast.makeText(
+                            context,
+                            "最多选 ${ClipConstraints.MAX_CLIP_MS / 1000} 秒",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    } else {
+                        onNext()
+                    }
+                },
+                enabled = valid,
+            ) { Text("下一步(P3 预览)") }
         }
     }
 }
