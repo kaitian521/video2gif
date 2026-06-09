@@ -33,11 +33,17 @@ object MediaStoreSaver {
         displayName: String = "video2gif_${System.currentTimeMillis()}.mp4",
     ): Uri? = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
+        val nowMs = System.currentTimeMillis()
+        val nowSec = nowMs / 1000
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Video.Media.DISPLAY_NAME, displayName)
                 put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
                 put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/$DIR")
+                // 日期元数据:部分图库据此把视频排进主时间线(否则只在「相册」里能找到)。
+                put(MediaStore.Video.Media.DATE_TAKEN, nowMs)
+                put(MediaStore.Video.Media.DATE_ADDED, nowSec)
+                put(MediaStore.Video.Media.DATE_MODIFIED, nowSec)
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
             val collection =
@@ -71,6 +77,9 @@ object MediaStoreSaver {
                 val values = ContentValues().apply {
                     put(MediaStore.Video.Media.DISPLAY_NAME, displayName)
                     put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                    put(MediaStore.Video.Media.DATE_TAKEN, nowMs)
+                    put(MediaStore.Video.Media.DATE_ADDED, nowSec)
+                    put(MediaStore.Video.Media.DATE_MODIFIED, nowSec)
                     @Suppress("DEPRECATION")
                     put(MediaStore.Video.Media.DATA, dest.absolutePath)
                 }
