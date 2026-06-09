@@ -30,6 +30,7 @@ import kotlinx.coroutines.isActive
 @Composable
 fun VideoPreview(
     state: EditState,
+    onPositionChange: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -56,6 +57,9 @@ fun VideoPreview(
             if (player.playbackState == Player.STATE_ENDED || pos >= endMs) {
                 player.seekTo(startMs)
                 player.play()
+                onPositionChange(startMs)
+            } else {
+                onPositionChange(pos)
             }
             delay(50)
         }

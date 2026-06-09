@@ -1,17 +1,29 @@
 package com.dodotechhk.video2gif.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.ClipConstraints
@@ -35,6 +47,9 @@ fun TrimScreen(
     val length = state.clipEndMs - state.clipStartMs
     val valid = isValidClip(state.clipStartMs, state.clipEndMs, state.durationMs)
 
+    // 当前播放位置(由预览回调更新),用于在两滑竿之间画播放进度细条。
+    var positionMs by remember(state.sourceUri) { mutableStateOf(state.clipStartMs) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -47,6 +62,7 @@ fun TrimScreen(
         // 视频预览:循环播放当前选区。占据中间可用空间。
         VideoPreview(
             state = state,
+            onPositionChange = { positionMs = it },
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
@@ -57,25 +73,51 @@ fun TrimScreen(
             style = MaterialTheme.typography.titleMedium,
         )
 
-        RangeSlider(
-            value = state.clipStartMs.toFloat()..state.clipEndMs.toFloat(),
-            onValueChange = { range ->
-                val newStart = range.start.toLong()
-                val newEnd = range.endInclusive.toLong()
-                // 检测哪个手柄被拖动,另一端固定,交给纯函数夹紧。
-                val (start, end) = if (newStart != state.clipStartMs) {
-                    clampStartMs(newStart, state.clipEndMs) to state.clipEndMs
-                } else {
-                    state.clipStartMs to clampEndMs(newEnd, state.clipStartMs, state.durationMs)
-                }
-                onStateChange(state.copy(clipStartMs = start, clipEndMs = end))
-            },
-            valueRange = 0f..state.durationMs.toFloat(),
-            // 左右各 +15dp,避开手机侧边手势区(叠加在 Column 的 24dp 之上)。
+        // 滑块 + 播放进度细条。左右各 +15dp,避开手机侧边手势区(叠加在 Column 的 24dp 之上)。
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 15.dp),
-        )
+        ) {
+            // 轨道两端各内缩一个滑块半径,使细条与滑竿落在同一坐标系。
+            val thumbRadius = 10.dp
+            val trackWidth = maxWidth
+
+            RangeSlider(
+                value = state.clipStartMs.toFloat()..state.clipEndMs.toFloat(),
+                onValueChange = { range ->
+                    val newStart = range.start.toLong()
+                    val newEnd = range.endInclusive.toLong()
+                    // 检测哪个手柄被拖动,另一端固定,交给纯函数夹紧。
+                    val (start, end) = if (newStart != state.clipStartMs) {
+                        clampStartMs(newStart, state.clipEndMs) to state.clipEndMs
+                    } else {
+                        state.clipStartMs to clampEndMs(newEnd, state.clipStartMs, state.durationMs)
+                    }
+                    onStateChange(state.copy(clipStartMs = start, clipEndMs = end))
+                },
+                valueRange = 0f..state.durationMs.toFloat(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            if (state.durationMs > 0) {
+                // 夹在两滑竿之间,确保细条始终落在选区内。
+                val shownPos = positionMs.coerceIn(state.clipStartMs, state.clipEndMs)
+                val fraction = (shownPos.toFloat() / state.durationMs).coerceIn(0f, 1f)
+                val playheadX = thumbRadius + (trackWidth - thumbRadius * 2) * fraction
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = playheadX - 1.dp)
+                        .width(2.dp)
+                        .height(32.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            shape = RoundedCornerShape(1.dp),
+                        ),
+                )
+            }
+        }
 
         Text(
             "约束:${ClipConstraints.MIN_CLIP_MS}ms ≤ 时长 ≤ ${ClipConstraints.MAX_CLIP_MS}ms",
