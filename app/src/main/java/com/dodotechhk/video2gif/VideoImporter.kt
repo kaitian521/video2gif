@@ -26,33 +26,59 @@ object VideoImporter {
     const val MIN_DURATION_MS = 500L
 
     sealed interface Result {
-        /** 导入成功:[localPath] 已确认 `exists() && canRead()`。 */
-        data class Success(val uri: Uri, val localPath: String, val durationMs: Long) : Result
+        /**
+         * 导入成功:[localPath] 已确认 `exists() && canRead()`。
+         * [displayWidth]/[displayHeight] 为**已应用旋转**的显示尺寸(90/270° 已交换宽高);
+         * 读不到时回退 0,UI 用默认比例兜底。
+         */
+        data class Success(
+            val uri: Uri,
+            val localPath: String,
+            val durationMs: Long,
+            val displayWidth: Int,
+            val displayHeight: Int,
+        ) : Result
         /** 时长 ≤ [MIN_DURATION_MS],拒绝。 */
         data class TooShort(val durationMs: Long) : Result
         /** 其它失败(读不到时长 / 复制失败等)。 */
         data class Error(val message: String) : Result
     }
 
+    private data class Meta(val durationMs: Long, val width: Int, val height: Int)
+
     suspend fun import(context: Context, uri: Uri): Result = withContext(Dispatchers.IO) {
-        val durationMs = readDurationMs(context, uri)
+        val meta = readMeta(context, uri)
             ?: return@withContext Result.Error("无法读取视频时长")
-        if (durationMs <= MIN_DURATION_MS) {
-            return@withContext Result.TooShort(durationMs)
+        if (meta.durationMs <= MIN_DURATION_MS) {
+            return@withContext Result.TooShort(meta.durationMs)
         }
         val localPath = try {
             resolveReadablePath(context, uri) ?: copyToCache(context, uri)
         } catch (e: Exception) {
             return@withContext Result.Error("复制视频到本地失败:${e.message}")
         }
-        Result.Success(uri, localPath, durationMs)
+        Result.Success(uri, localPath, meta.durationMs, meta.width, meta.height)
     }
 
-    private fun readDurationMs(context: Context, uri: Uri): Long? {
+    /** 一次性读时长 + 显示尺寸(旋转 90/270° 时交换宽高);读不到时长返回 null。 */
+    private fun readMeta(context: Context, uri: Uri): Meta? {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, uri)
-            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+            val duration = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: return null
+            val w = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                ?.toIntOrNull() ?: 0
+            val h = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                ?.toIntOrNull() ?: 0
+            val rotation = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                ?.toIntOrNull() ?: 0
+            // 90/270°:编码宽高与显示宽高互换。
+            if (rotation == 90 || rotation == 270) Meta(duration, h, w) else Meta(duration, w, h)
         } catch (e: Exception) {
             null
         } finally {

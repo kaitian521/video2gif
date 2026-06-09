@@ -65,15 +65,28 @@ fun TrimScreen(
         Text("截取区间", style = MaterialTheme.typography.titleLarge)
         Text("源时长:${state.durationMs} ms", style = MaterialTheme.typography.bodyMedium)
 
-        // 视频预览:循环播放当前选区。占据中间可用空间。
-        VideoPreview(
-            state = state,
-            onPositionChange = { positionMs = it },
-            restartSignal = restartTrigger,
+        // 视频预览:**高度固定**,宽度按源视频显示比例自适应,无黑边。
+        // 盒子与视频宽高比严格一致 → PlayerView 默认 FIT 不产生 letterbox。
+        // 超宽视频(宽 > 可用宽度)时按可用宽度回退,避免横向溢出。
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            val ratio = state.sourceAspectRatio
+            val previewHeight = 320.dp
+            val w = minOf(previewHeight * ratio, maxWidth)
+            val h = w / ratio
+            VideoPreview(
+                state = state,
+                onPositionChange = { positionMs = it },
+                restartSignal = restartTrigger,
+                modifier = Modifier
+                    .width(w)
+                    .height(h),
+            )
+        }
 
         Text(
             "区间:${state.clipStartMs} … ${state.clipEndMs} ms(时长 $length ms)",

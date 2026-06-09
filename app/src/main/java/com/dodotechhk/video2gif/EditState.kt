@@ -23,6 +23,10 @@ data class EditState(
     val sourceLocalPath: String? = null,
     /** 源视频总时长(ms)。 */
     val durationMs: Long = 0L,
+    /** 源视频**显示**宽(px,已应用旋转);读不到为 0,用 [sourceAspectRatio] 兜底。 */
+    val displayWidth: Int = 0,
+    /** 源视频**显示**高(px,已应用旋转);读不到为 0。 */
+    val displayHeight: Int = 0,
     /** 截取区间起点(ms),默认从 0。仅存于此,导出时才折进 ClippingConfiguration(§3)。 */
     val clipStartMs: Long = 0L,
     /** 截取区间终点(ms)。约束见 [ClipConstraints]。 */
@@ -32,4 +36,12 @@ data class EditState(
      * 派生宽度的偶数对齐由导出端 encoder 兜底。详见 [buildVideoEffects] 的 `Presentation`(P3)。
      */
     val targetHeight: Int = 720,
-)
+) {
+    /** 源视频显示宽高比(宽/高);读不到尺寸时回退 16:9。供截取页按比例定宽用。 */
+    val sourceAspectRatio: Float
+        get() = if (displayWidth > 0 && displayHeight > 0) {
+            displayWidth.toFloat() / displayHeight
+        } else {
+            16f / 9f
+        }
+}
