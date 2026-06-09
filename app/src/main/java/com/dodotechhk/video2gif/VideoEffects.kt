@@ -1,6 +1,7 @@
 package com.dodotechhk.video2gif
 
 import androidx.media3.common.Effect
+import androidx.media3.effect.Crop
 import androidx.media3.effect.Presentation
 
 /**
@@ -14,8 +15,19 @@ import androidx.media3.effect.Presentation
  * 导出用 `EditedMediaItem.Builder#setSpeed`(技术方案 §5.4 / 实施计划 P7)。
  */
 fun buildVideoEffects(state: EditState): List<Effect> = listOf(
-    // P3:仅 Presentation,把输出定到 targetHeight(宽按内容比例派生)。
+    // P4:比例中心裁剪(P5 起 ScaleAndRotate 会插到 cropEffect 之前)。
+    cropEffect(state),
+    // P3:Presentation 把输出定到 targetHeight(宽按裁后比例派生)。
     // 计划里的 copyWithUnsetSideRoundedTo(2) 在 1.10.1 未确认存在,故不用;
     // 偶数维度由偶数 targetHeight + 导出端 encoder 兜底。
     Presentation.createForHeight(state.targetHeight),
 )
+
+/**
+ * 比例中心裁剪(实施计划 P4 / 技术方案 §4)。NDC `[-1,1]` 上居中,半宽/半高来自
+ * [centerCropHalfExtents]。P6 会在此折进平移偏移 + 夹紧。
+ */
+fun cropEffect(state: EditState): Crop {
+    val (halfW, halfH) = centerCropHalfExtents(state)
+    return Crop(-halfW, halfW, -halfH, halfH)
+}

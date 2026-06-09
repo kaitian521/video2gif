@@ -1,12 +1,19 @@
 package com.dodotechhk.video2gif.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -16,9 +23,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.dodotechhk.video2gif.AspectRatio
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.MediaStoreSaver
 import com.dodotechhk.video2gif.VideoExporter
@@ -58,16 +67,53 @@ fun PreviewScreen(
             style = MaterialTheme.typography.bodyMedium,
         )
 
-        // 效果管线预览:循环播放选区。占据中间可用空间。
-        VideoPreview(
-            state = state,
+        // 预览:视频按**源比例**满帧播放(表面尺寸不随选比例变化 → 不抖不闪),
+        // 上面叠 CropOverlay 标出裁剪保留区。真正裁剪在导出时由 cropEffect 生效(所见即所得)。
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            val ar = state.sourceAspectRatio
+            // 源比例 FIT 进可用区,得到视频显示矩形。
+            val (vw, vh) = if (maxWidth / ar <= maxHeight) {
+                maxWidth to maxWidth / ar
+            } else {
+                maxHeight * ar to maxHeight
+            }
+            Box(
+                modifier = Modifier
+                    .width(vw)
+                    .height(vh),
+            ) {
+                // 满帧播放:用 aspect=Original 让预览不裁(导出仍用带 aspect 的 state)。
+                VideoPreview(
+                    state = state.copy(aspect = AspectRatio.Original),
+                    modifier = Modifier.fillMaxSize(),
+                )
+                CropOverlay(state = state, modifier = Modifier.fillMaxSize())
+            }
+        }
+
+        // P4:比例选择(原始 / 1:1 / 3:4 / 4:3 / 16:9 / 9:16),即时生效、无黑边。
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            AspectRatio.values().forEach { aspect ->
+                FilterChip(
+                    selected = state.aspect == aspect,
+                    onClick = { onStateChange(state.copy(aspect = aspect)) },
+                    label = { Text(aspect.label) },
+                )
+            }
+        }
 
         Text(
-            "目标高度:${state.targetHeight}px(P4 起加入比例/缩放/旋转/拖动)",
+            "比例:${state.aspect.label} · 目标高度:${state.targetHeight}px",
             style = MaterialTheme.typography.bodySmall,
         )
 

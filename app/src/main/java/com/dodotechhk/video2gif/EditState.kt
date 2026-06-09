@@ -36,6 +36,8 @@ data class EditState(
      * 派生宽度的偶数对齐由导出端 encoder 兜底。详见 [buildVideoEffects] 的 `Presentation`(P3)。
      */
     val targetHeight: Int = 720,
+    /** 目标比例(P4 中心裁剪);默认「原始」= 不裁。详见 [centerCropHalfExtents]。 */
+    val aspect: AspectRatio = AspectRatio.Original,
 ) {
     /** 源视频显示宽高比(宽/高);读不到尺寸时回退 16:9。供截取页按比例定宽用。 */
     val sourceAspectRatio: Float
@@ -44,4 +46,8 @@ data class EditState(
         } else {
             16f / 9f
         }
+
+    /** 经比例裁剪后的输出宽高比(宽/高):选了比例用之,否则用源比例。供预览页按比例定框用。 */
+    val outputAspectRatio: Float
+        get() = aspect.ratio ?: sourceAspectRatio
 }

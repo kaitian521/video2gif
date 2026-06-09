@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  预览用 PlayerView:
+  - surface_type=texture_view:平滑缩放、不重建表面(避免 SurfaceView 黑闪);
+  - resize_mode=fit:在**固定画布**内按真实比例居中显示裁剪结果。画布尺寸不随比例变化,
+    故切比例不重塑表面 → 不抖、不闪;裁剪结果四周为稳定画布留白。
+-->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:resize_mode="fit"
+    app:use_controller="false" />
