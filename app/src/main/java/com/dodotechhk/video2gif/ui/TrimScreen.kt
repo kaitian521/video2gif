@@ -49,6 +49,8 @@ fun TrimScreen(
 
     // 当前播放位置(由预览回调更新),用于在两滑竿之间画播放进度细条。
     var positionMs by remember(state.sourceUri) { mutableStateOf(state.clipStartMs) }
+    // 滑块松手后自增,触发预览从左滑竿重新播放。
+    var restartTrigger by remember(state.sourceUri) { mutableStateOf(0) }
 
     Column(
         modifier = modifier
@@ -63,6 +65,7 @@ fun TrimScreen(
         VideoPreview(
             state = state,
             onPositionChange = { positionMs = it },
+            restartSignal = restartTrigger,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
@@ -96,6 +99,8 @@ fun TrimScreen(
                     }
                     onStateChange(state.copy(clipStartMs = start, clipEndMs = end))
                 },
+                // 松手即从左滑竿重新播放。
+                onValueChangeFinished = { restartTrigger++ },
                 valueRange = 0f..state.durationMs.toFloat(),
                 modifier = Modifier.fillMaxWidth(),
             )

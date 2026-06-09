@@ -31,6 +31,7 @@ import kotlinx.coroutines.isActive
 fun VideoPreview(
     state: EditState,
     onPositionChange: (Long) -> Unit = {},
+    restartSignal: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -62,6 +63,15 @@ fun VideoPreview(
                 onPositionChange(pos)
             }
             delay(50)
+        }
+    }
+
+    // 滑块改动并松手后,从左滑竿(clipStart)重新播放。
+    LaunchedEffect(restartSignal) {
+        if (restartSignal > 0) {
+            player.seekTo(startMs)
+            player.play()
+            onPositionChange(startMs)
         }
     }
 
