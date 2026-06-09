@@ -10,6 +10,8 @@ kotlin = "2.2.10"
 composeBom = "2026.02.01"
 # Media3:全 artifact 锁同一具体版本(≥1.10 才有 setSpeed/setFrameRate 变速 API,见技术方案 §10.4)。不要写动态范围。
 media3 = "1.10.1"
+# 与 Media3/lifecycle 传递依赖解析到的版本对齐,避免漂移。
+coroutines = "1.9.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -31,6 +33,7 @@ androidx-media3-effect = { group = "androidx.media3", name = "media3-effect", ve
 androidx-media3-transformer = { group = "androidx.media3", name = "media3-transformer", version.ref = "media3" }
 androidx-media3-common = { group = "androidx.media3", name = "media3-common", version.ref = "media3" }
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
