@@ -2,8 +2,8 @@
 <!--
   预览用 PlayerView:
   - surface_type=texture_view:平滑缩放、不重建表面(避免 SurfaceView 黑闪);
-  - resize_mode=fit:在**固定画布**内按真实比例居中显示裁剪结果。画布尺寸不随比例变化,
-    故切比例不重塑表面 → 不抖、不闪;裁剪结果四周为稳定画布留白。
+  - resize_mode=fit:按内容真实比例显示。外框比例由调用方用**播放器回写的真实宽高比**给定,
+    二者一致 → 填满无缝、且与导出 cropEffect 同一比例真值,预览==导出。
 -->
 <androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"

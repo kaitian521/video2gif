@@ -81,6 +81,13 @@ fun TrimScreen(
             VideoPreview(
                 state = state,
                 onPositionChange = { positionMs = it },
+                onVideoDisplaySize = { vwPx, vhPx ->
+                    // 用播放器真实尺寸校正源宽高比(MMR 方形像素假设可能不符);早校正,预览页直接用对。
+                    val reported = vwPx.toFloat() / vhPx
+                    if (kotlin.math.abs(reported - state.sourceAspectRatio) > 0.01f) {
+                        onStateChange(state.copy(displayWidth = vwPx, displayHeight = vhPx))
+                    }
+                },
                 restartSignal = restartTrigger,
                 modifier = Modifier
                     .width(w)

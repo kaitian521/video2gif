@@ -2,7 +2,6 @@ package com.dodotechhk.video2gif.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -10,47 +9,42 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.dodotechhk.video2gif.EditState
-import com.dodotechhk.video2gif.centerCropHalfExtents
 
 /**
- * 裁剪框遮罩(P4 / 剪映式)。覆盖在**满帧播放**的视频上,用半透明压暗 + 边框标出
- * 中心裁剪保留区。区域来自 [centerCropHalfExtents](与导出 `cropEffect` 同一真值 → 所见即所得)。
+ * 固定取景框遮罩(P4–P5 / 剪映式)。在画布中央画一个 [frameWidth]×[frameHeight] 的取景框,
+ * 框外压暗 + 白色边框。
  *
- * 切比例时只重绘此遮罩,**不重塑视频表面** → 不抖不闪。P5/P6 的缩放/旋转/拖动后续在此叠加。
- *
- * 必须与视频显示矩形**同尺寸、同位置**(调用方把二者放进同一个按源比例定的 Box)。
+ * **取景框尺寸由调用方传入**(与定视频基准尺寸 vw0/vh0 用的同一个 fw/fh)——二者必须同源,
+ * 否则白框与视频填满区域不一致,会在框内留缝(历史 bug)。
  */
 @Composable
-fun CropOverlay(
-    state: EditState,
+fun CropFrameOverlay(
+    frameWidth: Dp,
+    frameHeight: Dp,
     modifier: Modifier = Modifier,
     scrimAlpha: Float = 0.5f,
     borderWidth: Dp = 2.dp,
 ) {
-    val (halfW, halfH) = remember(state.aspect, state.displayWidth, state.displayHeight) {
-        centerCropHalfExtents(state)
-    }
     val scrim = Color.Black.copy(alpha = scrimAlpha)
     Canvas(modifier) {
         val w = size.width
         val h = size.height
-        val cw = w * halfW
-        val ch = h * halfH
-        val left = (w - cw) / 2f
-        val top = (h - ch) / 2f
+        val fw = frameWidth.toPx().coerceAtMost(w)
+        val fh = frameHeight.toPx().coerceAtMost(h)
+        val left = (w - fw) / 2f
+        val top = (h - fh) / 2f
 
-        // 保留区之外压暗(上/下/左/右四条)。
+        // 取景框之外压暗(上/下/左/右四条)。
         drawRect(scrim, Offset(0f, 0f), Size(w, top))
-        drawRect(scrim, Offset(0f, top + ch), Size(w, h - top - ch))
-        drawRect(scrim, Offset(0f, top), Size(left, ch))
-        drawRect(scrim, Offset(left + cw, top), Size(w - left - cw, ch))
+        drawRect(scrim, Offset(0f, top + fh), Size(w, h - top - fh))
+        drawRect(scrim, Offset(0f, top), Size(left, fh))
+        drawRect(scrim, Offset(left + fw, top), Size(w - left - fw, fh))
 
-        // 保留区边框。
+        // 取景框边框。
         drawRect(
             color = Color.White,
             topLeft = Offset(left, top),
-            size = Size(cw, ch),
+            size = Size(fw, fh),
             style = Stroke(width = borderWidth.toPx()),
         )
     }

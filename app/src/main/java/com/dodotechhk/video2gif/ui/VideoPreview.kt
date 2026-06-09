@@ -12,8 +12,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import kotlin.math.roundToInt
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.R
 import com.dodotechhk.video2gif.buildVideoEffects
@@ -37,6 +39,8 @@ import kotlinx.coroutines.isActive
 fun VideoPreview(
     state: EditState,
     onPositionChange: (Long) -> Unit = {},
+    /** 播放器**实际**显示尺寸(已含 pixelWidthHeightRatio / 旋转)回调;调用方据此校正源宽高比。 */
+    onVideoDisplaySize: (Int, Int) -> Unit = { _, _ -> },
     restartSignal: Int = 0,
     modifier: Modifier = Modifier,
 ) {
@@ -87,8 +91,22 @@ fun VideoPreview(
         }
     }
 
+    // 上报播放器真实显示尺寸,用于校正源宽高比(MMR 的方形像素假设可能与实际不符)。
+    val onSize by rememberUpdatedState(onVideoDisplaySize)
     DisposableEffect(player) {
-        onDispose { player.release() }
+        val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                val par = if (videoSize.pixelWidthHeightRatio > 0f) videoSize.pixelWidthHeightRatio else 1f
+                val w = (videoSize.width * par).roundToInt()
+                val h = videoSize.height
+                if (w > 0 && h > 0) onSize(w, h)
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
     }
 
     AndroidView(

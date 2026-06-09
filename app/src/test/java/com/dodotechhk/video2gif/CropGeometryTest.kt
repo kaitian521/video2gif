@@ -56,4 +56,32 @@ class CropGeometryTest {
             }
         }
     }
+
+    @Test
+    fun scale_shrinks_window_by_1_over_s_preserving_ratio() {
+        val sources = listOf(1920 to 1080, 1080 to 1920, 1280 to 1280, 640 to 480)
+        for ((w, h) in sources) {
+            for (aspect in AspectRatio.values()) {
+                val (hw1, hh1) = centerCropHalfExtents(state(w, h, aspect)) // scale=1
+                for (s in listOf(1f, 2f, 4f)) {
+                    val (hw, hh) = centerCropHalfExtents(state(w, h, aspect).copy(scale = s))
+                    // 窗口 = scale1 窗口的 1/s。
+                    assertEquals(hw1 / s, hw, 1e-4f)
+                    assertEquals(hh1 / s, hh, 1e-4f)
+                    // 仍在界内、比例不变。
+                    assertTrue(hw > 0f && hw <= 1f + 1e-4f && hh > 0f && hh <= 1f + 1e-4f)
+                    val targetAR = aspect.ratio ?: state(w, h, aspect).sourceAspectRatio
+                    assertEquals(targetAR, (hw * w) / (hh * h), 1e-3f)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun scale_below_one_is_clamped_to_one() {
+        val (hw1, hh1) = centerCropHalfExtents(state(1920, 1080, AspectRatio.Square))
+        val (hw, hh) = centerCropHalfExtents(state(1920, 1080, AspectRatio.Square).copy(scale = 0.5f))
+        assertEquals(hw1, hw, 1e-4f)
+        assertEquals(hh1, hh, 1e-4f)
+    }
 }

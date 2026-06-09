@@ -38,6 +38,8 @@ data class EditState(
     val targetHeight: Int = 720,
     /** 目标比例(P4 中心裁剪);默认「原始」= 不裁。详见 [centerCropHalfExtents]。 */
     val aspect: AspectRatio = AspectRatio.Original,
+    /** P5 缩放:取景窗口放大倍数(≥1,1=不放大)。放大 → 裁剪窗口相对更小(halfW/s, halfH/s)。 */
+    val scale: Float = 1f,
 ) {
     /** 源视频显示宽高比(宽/高);读不到尺寸时回退 16:9。供截取页按比例定宽用。 */
     val sourceAspectRatio: Float

@@ -13,21 +13,24 @@ enum class AspectRatio(val label: String, val ratio: Float?) {
 }
 
 /**
- * 中心裁剪的 NDC 半宽/半高(实施计划 P4 / 技术方案 §4)。
+ * 中心裁剪的 NDC 半宽/半高(实施计划 P4–P5 / 技术方案 §4)。
  *
- * **纯函数**,P5 会在此叠加 scale/旋转的内接矩形;P4 只含比例。返回 `(halfW, halfH)`,
+ * **纯函数**,P5 旋转会在此再叠加内接矩形;当前含**比例 + 缩放**。返回 `(halfW, halfH)`,
  * 二者 `∈ (0, 1]`。Crop 在 NDC `[-1,1]` 上按比例**逐轴**缩窗口:裁后像素比 =
  * `(halfW·srcW)/(halfH·srcH)`,令其等于目标比例即得下式。
  *
- * 记 `srcAR = 源宽/源高`、`targetAR = 目标宽/高`,`r = targetAR / srcAR`:
- * - `r ≤ 1`(目标相对更"瘦" → 裁宽):`halfW = r`,`halfH = 1`;
- * - `r > 1`(目标相对更"宽" → 裁高):`halfW = 1`,`halfH = 1/r`。
- *
- * 「原始」比例时 `targetAR = srcAR` → `r = 1` → `(1, 1)`,不裁。
+ * 1) 比例。记 `srcAR = 源宽/源高`、`targetAR = 目标宽/高`,`r = targetAR / srcAR`:
+ *    - `r ≤ 1`(目标相对更"瘦" → 裁宽):`halfW = r`,`halfH = 1`;
+ *    - `r > 1`(目标相对更"宽" → 裁高):`halfW = 1`,`halfH = 1/r`。
+ *    「原始」比例 `r = 1` → `(1, 1)`,不裁。
+ * 2) 缩放。放大 `s = max(1, scale)` → 窗口逐轴再除以 `s`(`halfW/s, halfH/s`),
+ *    比例不变(同除一个数)、窗口更小 = 放大取景。`s ≥ 1` 保证不越界、不露黑。
  */
 fun centerCropHalfExtents(state: EditState): Pair<Float, Float> {
     val srcAR = state.sourceAspectRatio
     val targetAR = state.aspect.ratio ?: srcAR
     val r = targetAR / srcAR
-    return if (r <= 1f) r to 1f else 1f to (1f / r)
+    val (aspectHalfW, aspectHalfH) = if (r <= 1f) r to 1f else 1f to (1f / r)
+    val s = state.scale.coerceAtLeast(1f)
+    return (aspectHalfW / s).coerceIn(0f, 1f) to (aspectHalfH / s).coerceIn(0f, 1f)
 }
