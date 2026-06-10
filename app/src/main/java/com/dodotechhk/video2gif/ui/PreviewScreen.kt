@@ -1,6 +1,7 @@
 package com.dodotechhk.video2gif.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
@@ -149,6 +150,9 @@ fun PreviewScreen(
                             scaleY = state.scale
                         },
                 )
+                // 白色预览框:作为视频之后的兄弟节点画在最上层,贴外框内缘。
+                // 外框 == 裁切窗口 == 导出保留区,框线所在即导出边界。
+                Box(Modifier.matchParentSize().border(2.dp, Color.White))
             }
         }
 
