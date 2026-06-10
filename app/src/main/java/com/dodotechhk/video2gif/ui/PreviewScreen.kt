@@ -37,10 +37,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.AspectRatio
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.MediaStoreSaver
+import com.dodotechhk.video2gif.centerCropHalfExtents
+import com.dodotechhk.video2gif.clampedCropCenter
+import com.dodotechhk.video2gif.withClampedOffsets
 import com.dodotechhk.video2gif.VideoExporter
 import kotlinx.coroutines.launch
 import java.io.File
@@ -96,18 +100,7 @@ fun PreviewScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                // 双指缩放:放大视频;夹在 [1, MAX_SCALE]。
-                .pointerInput(Unit) {
-                    detectTransformGestures { _, _, zoom, _ ->
-                        val s = (currentState.scale * zoom).coerceIn(1f, MAX_SCALE)
-                        onChange(currentState.copy(scale = s))
-                    }
-                }
-                // 双击复位缩放。
-                .pointerInput(Unit) {
-                    detectTapGestures(onDoubleTap = { onChange(currentState.copy(scale = 1f)) })
-                },
+                .weight(1f),
             contentAlignment = Alignment.Center,
         ) {
             val outAR = state.outputAspectRatio
@@ -116,43 +109,88 @@ fun PreviewScreen(
             } else {
                 maxWidth to maxWidth / outAR
             }
+            // 源比例 cover 外框:源更宽 → 定高、左右溢出;源更高 → 定宽、上下溢出。
+            val srcAR = state.sourceAspectRatio
+            val (videoW, videoH) = if (srcAR >= outAR) vh * srcAR to vh else vw to vw / srcAR
+            // 手势换算用的内容像素尺寸(随比例/布局变;rememberUpdatedState 防 pointerInput 闭包读旧值)。
+            val density = LocalDensity.current
+            val contentPx by rememberUpdatedState(
+                with(density) { videoW.toPx() } to with(density) { videoH.toPx() },
+            )
 
-            // 满帧播放:预览不裁不缩(aspect=Original、scale=1);视觉裁切 = 源比例 cover 外框
-            // + clipToBounds,缩放由 graphicsLayer 表现,导出才真裁。
             Box(
                 modifier = Modifier
-                    .width(vw)
-                    .height(vh)
-                    .clipToBounds()
-                    .background(Color.Black),
+                    .fillMaxSize()
+                    // P5/P6 手势:单指拖动移位 + 双指缩放,统一走 transform。
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            val s = (currentState.scale * zoom).coerceIn(1f, MAX_SCALE)
+                            val scaled = currentState.copy(scale = s)
+                            val (wPx, hPx) = contentPx
+                            val (halfW, halfH) = centerCropHalfExtents(scaled)
+                            // 跟手 1:1:内容全宽 wPx·s px ↔ NDC 跨度 2,拖内容 = 窗口反向移动;
+                            // NDC y 朝上、屏幕 y 朝下 → y 取反。从**已夹紧**的当前中心起算并
+                            // 夹紧后写回(比例/缩放变过也不留空拖死区,实施计划 P6 步骤 4)。
+                            val (cx0, cy0) = clampedCropCenter(scaled)
+                            val cx = (cx0 - pan.x * 2f / (wPx * s)).coerceIn(halfW - 1f, 1f - halfW)
+                            val cy = (cy0 + pan.y * 2f / (hPx * s)).coerceIn(halfH - 1f, 1f - halfH)
+                            onChange(scaled.copy(offsetX = cx, offsetY = cy))
+                        }
+                    }
+                    // 双击复位:缩放 + 位置一起归零。
+                    .pointerInput(Unit) {
+                        detectTapGestures(onDoubleTap = {
+                            onChange(currentState.copy(scale = 1f, offsetX = 0f, offsetY = 0f))
+                        })
+                    },
                 contentAlignment = Alignment.Center,
             ) {
-                // 源比例 cover 外框:源更宽 → 定高、左右溢出;源更高 → 定宽、上下溢出。
-                // requiredWidth/Height 允许超出父约束(Compose 自动居中溢出部分)。
-                val srcAR = state.sourceAspectRatio
-                val (videoW, videoH) = if (srcAR >= outAR) vh * srcAR to vh else vw to vw / srcAR
-                VideoPreview(
-                    state = state.copy(aspect = AspectRatio.Original, scale = 1f),
-                    onVideoDisplaySize = { vwPx, vhPx ->
-                        // 用播放器真实尺寸校正源宽高比,让预览几何与导出 Crop 同源(否则框≠导出)。
-                        // 注:1.10.1 开 setVideoEffects 后此回调不触发(b/292111083),
-                        // 实际依赖导入时 MMR 读到的 displayWidth/Height;留作版本升级后的兜底。
-                        val reported = vwPx.toFloat() / vhPx
-                        if (kotlin.math.abs(reported - currentState.sourceAspectRatio) > 0.01f) {
-                            onChange(currentState.copy(displayWidth = vwPx, displayHeight = vhPx))
-                        }
-                    },
+                // 满帧播放:预览不裁不移(aspect=Original、scale=1、offset=0);视觉裁切 =
+                // 源比例 cover 外框 + clipToBounds,缩放/平移由 graphicsLayer 表现,导出才真裁。
+                Box(
                     modifier = Modifier
-                        .requiredWidth(videoW)
-                        .requiredHeight(videoH)
-                        .graphicsLayer {
-                            scaleX = state.scale
-                            scaleY = state.scale
+                        .width(vw)
+                        .height(vh)
+                        .clipToBounds()
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // requiredWidth/Height 允许超出父约束(Compose 自动居中溢出部分)。
+                    VideoPreview(
+                        state = state.copy(
+                            aspect = AspectRatio.Original,
+                            scale = 1f,
+                            offsetX = 0f,
+                            offsetY = 0f,
+                        ),
+                        onVideoDisplaySize = { vwPx, vhPx ->
+                            // 用播放器真实尺寸校正源宽高比,让预览几何与导出 Crop 同源(否则框≠导出)。
+                            // 注:1.10.1 开 setVideoEffects 后此回调不触发(b/292111083),
+                            // 实际依赖导入时 MMR 读到的 displayWidth/Height;留作版本升级后的兜底。
+                            val reported = vwPx.toFloat() / vhPx
+                            if (kotlin.math.abs(reported - currentState.sourceAspectRatio) > 0.01f) {
+                                onChange(currentState.copy(displayWidth = vwPx, displayHeight = vhPx))
+                            }
                         },
-                )
-                // 白色预览框:作为视频之后的兄弟节点画在最上层,贴外框内缘。
-                // 外框 == 裁切窗口 == 导出保留区,框线所在即导出边界。
-                Box(Modifier.matchParentSize().border(2.dp, Color.White))
+                        modifier = Modifier
+                            .requiredWidth(videoW)
+                            .requiredHeight(videoH)
+                            .graphicsLayer {
+                                val s = state.scale
+                                scaleX = s
+                                scaleY = s
+                                // 把窗口中心 (cx,cy) 平移到外框中心:NDC → px 乘内容半宽/半高×s,
+                                // x 反向(内容左移露出右部),y 再取反回屏幕系。与导出 cropEffect
+                                // 共用 clampedCropCenter 真值。
+                                val (cx, cy) = clampedCropCenter(state)
+                                translationX = -cx * size.width / 2f * s
+                                translationY = cy * size.height / 2f * s
+                            },
+                    )
+                    // 白色预览框:作为视频之后的兄弟节点画在最上层,贴外框内缘。
+                    // 外框 == 裁切窗口 == 导出保留区,框线所在即导出边界。
+                    Box(Modifier.matchParentSize().border(2.dp, Color.White))
+                }
             }
         }
 
@@ -166,14 +204,16 @@ fun PreviewScreen(
             AspectRatio.values().forEach { aspect ->
                 FilterChip(
                     selected = state.aspect == aspect,
-                    onClick = { onStateChange(state.copy(aspect = aspect)) },
+                    // 切比例后把偏移夹回新窗口的合法域(消除空拖死区)。
+                    onClick = { onStateChange(state.copy(aspect = aspect).withClampedOffsets()) },
                     label = { Text(aspect.label) },
                 )
             }
         }
 
         Text(
-            "比例:${state.aspect.label} · 缩放:${"%.1f".format(state.scale)}×(双指缩放,双击复位)",
+            "比例:${state.aspect.label} · 缩放:${"%.1f".format(state.scale)}×" +
+                "(拖动移位,双指缩放,双击复位)",
             style = MaterialTheme.typography.bodySmall,
         )
 

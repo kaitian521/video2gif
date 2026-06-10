@@ -24,10 +24,11 @@ fun buildVideoEffects(state: EditState): List<Effect> = listOf(
 )
 
 /**
- * 比例中心裁剪(实施计划 P4 / 技术方案 §4)。NDC `[-1,1]` 上居中,半宽/半高来自
- * [centerCropHalfExtents]。P6 会在此折进平移偏移 + 夹紧。
+ * 比例裁剪 + 拖动平移(实施计划 P4/P6 / 技术方案 §4)。NDC `[-1,1]` 上,
+ * 窗口中心来自 [clampedCropCenter](偏移已夹紧,不越界),半宽/半高来自 [centerCropHalfExtents]。
  */
 fun cropEffect(state: EditState): Crop {
     val (halfW, halfH) = centerCropHalfExtents(state)
-    return Crop(-halfW, halfW, -halfH, halfH)
+    val (cx, cy) = clampedCropCenter(state)
+    return Crop(cx - halfW, cx + halfW, cy - halfH, cy + halfH)
 }

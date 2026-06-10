@@ -8,12 +8,13 @@ import android.net.Uri
  * 已有字段:
  * - P1 `sourceUri` / `sourceLocalPath` / `durationMs`
  * - P2 `clipStartMs` / `clipEndMs`
- *
- * 后续阶段继续往里加:
  * - P3 `targetHeight`
  * - P4 `aspect`
- * - P5 `scaleX` / `scaleY` / `rotation`
+ * - P5 `scale`(旋转未做)
  * - P6 `offsetX` / `offsetY`
+ *
+ * 后续阶段继续往里加:
+ * - P5 余项 `rotation`
  * - P7 `speed`(时间轴变换,不进 [buildVideoEffects])
  */
 data class EditState(
@@ -40,6 +41,13 @@ data class EditState(
     val aspect: AspectRatio = AspectRatio.Original,
     /** P5 缩放:取景窗口放大倍数(≥1,1=不放大)。放大 → 裁剪窗口相对更小(halfW/s, halfH/s)。 */
     val scale: Float = 1f,
+    /**
+     * P6 拖动:裁剪窗口中心的 NDC 偏移(GL 约定,y 朝上;0 = 居中)。
+     * 使用前一律经 [clampedCropCenter] 夹紧(|c| ≤ 1 - half),保证窗口不出内容、不露黑边。
+     */
+    val offsetX: Float = 0f,
+    /** 同 [offsetX],竖直方向(正值 = 窗口偏向内容上部)。 */
+    val offsetY: Float = 0f,
 ) {
     /** 源视频显示宽高比(宽/高);读不到尺寸时回退 16:9。供截取页按比例定宽用。 */
     val sourceAspectRatio: Float

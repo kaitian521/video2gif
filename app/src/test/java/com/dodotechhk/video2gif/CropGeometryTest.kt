@@ -84,4 +84,79 @@ class CropGeometryTest {
         assertEquals(hw1, hw, 1e-4f)
         assertEquals(hh1, hh, 1e-4f)
     }
+
+    // ---- P6 拖动:clampedCropCenter / withClampedOffsets ----
+
+    @Test
+    fun zero_offset_stays_centered() {
+        val (cx, cy) = clampedCropCenter(state(1920, 1080, AspectRatio.Square).copy(scale = 2f))
+        assertEquals(0f, cx, 1e-4f)
+        assertEquals(0f, cy, 1e-4f)
+    }
+
+    @Test
+    fun full_window_allows_no_offset() {
+        // 原始比例 + scale=1:half=(1,1) → 合法域退化为 {0},任何偏移都夹回 0。
+        val st = state(1920, 1080, AspectRatio.Original).copy(offsetX = 0.7f, offsetY = -0.3f)
+        val (cx, cy) = clampedCropCenter(st)
+        assertEquals(0f, cx, 1e-4f)
+        assertEquals(0f, cy, 1e-4f)
+    }
+
+    @Test
+    fun aspect_crop_allows_pan_along_cropped_axis_only() {
+        // 16:9 源 → 9:16(scale=1):裁宽 → 水平可拖(|cx| ≤ 1-halfW),垂直不可(cy=0)。
+        val base = state(1920, 1080, AspectRatio.NineSixteen)
+        val (halfW, _) = centerCropHalfExtents(base)
+        val bound = 1f - halfW
+        assertTrue("竖比例在横源上应有水平拖动余量", bound > 1e-3f)
+
+        // 界内保留原值;越界夹到边界;垂直恒 0。
+        val inside = clampedCropCenter(base.copy(offsetX = bound / 2f, offsetY = 0.5f))
+        assertEquals(bound / 2f, inside.first, 1e-4f)
+        assertEquals(0f, inside.second, 1e-4f)
+        val outside = clampedCropCenter(base.copy(offsetX = 2f, offsetY = -2f))
+        assertEquals(bound, outside.first, 1e-4f)
+        assertEquals(0f, outside.second, 1e-4f)
+    }
+
+    @Test
+    fun offset_window_never_exceeds_content_bounds() {
+        // 源 × 比例 × 缩放 × 偏移(含极端值)的笛卡儿积:窗口 [c-half, c+half] ⊆ [-1,1]。
+        val sources = listOf(1920 to 1080, 1080 to 1920, 1280 to 1280, 640 to 480)
+        val offsets = listOf(-5f, -1f, -0.4f, 0f, 0.4f, 1f, 5f)
+        for ((w, h) in sources) {
+            for (aspect in AspectRatio.values()) {
+                for (s in listOf(1f, 2f, 4f, 8f)) {
+                    for (ox in offsets) {
+                        for (oy in offsets) {
+                            val st = state(w, h, aspect).copy(scale = s, offsetX = ox, offsetY = oy)
+                            val (halfW, halfH) = centerCropHalfExtents(st)
+                            val (cx, cy) = clampedCropCenter(st)
+                            val msg = "$w×$h ${aspect.label} s=$s o=($ox,$oy)"
+                            assertTrue("$msg 左越界", cx - halfW >= -1f - 1e-4f)
+                            assertTrue("$msg 右越界", cx + halfW <= 1f + 1e-4f)
+                            assertTrue("$msg 下越界", cy - halfH >= -1f - 1e-4f)
+                            assertTrue("$msg 上越界", cy + halfH <= 1f + 1e-4f)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun with_clamped_offsets_writes_back_legal_values() {
+        // 放大拖到边角 → 缩小(合法域收缩):回写后 offset 即新域边界,无空拖死区。
+        val zoomed = state(1920, 1080, AspectRatio.Square).copy(scale = 4f)
+        val (halfW4, halfH4) = centerCropHalfExtents(zoomed)
+        val atCorner = zoomed.copy(offsetX = 1f - halfW4, offsetY = 1f - halfH4)
+
+        val shrunk = atCorner.copy(scale = 2f).withClampedOffsets()
+        val (halfW2, halfH2) = centerCropHalfExtents(shrunk)
+        assertEquals(1f - halfW2, shrunk.offsetX, 1e-4f)
+        assertEquals(1f - halfH2, shrunk.offsetY, 1e-4f)
+        // 回写值再夹紧 = 自身(幂等)。
+        assertEquals(shrunk, shrunk.withClampedOffsets())
+    }
 }

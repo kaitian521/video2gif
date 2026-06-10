@@ -60,7 +60,8 @@ fun VideoPreview(
 
     // 效果相关 state 变化时重建效果链(P4–P6 手势走这里)。
     // 用各效果字段做 key:任一变化即 re-apply,prepare 后再次 setVideoEffects 合法。
-    LaunchedEffect(player, state.targetHeight, state.aspect) {
+    // (预览页传入的副本 aspect/scale/offset 恒为默认值 → 不在手势中触发;截取页传完整 state。)
+    LaunchedEffect(player, state.targetHeight, state.aspect, state.scale, state.offsetX, state.offsetY) {
         player.setVideoEffects(buildVideoEffects(state))
     }
 

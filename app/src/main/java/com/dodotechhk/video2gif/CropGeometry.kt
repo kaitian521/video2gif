@@ -34,3 +34,23 @@ fun centerCropHalfExtents(state: EditState): Pair<Float, Float> {
     val s = state.scale.coerceAtLeast(1f)
     return (aspectHalfW / s).coerceIn(0f, 1f) to (aspectHalfH / s).coerceIn(0f, 1f)
 }
+
+/**
+ * 裁剪窗口中心(NDC,实施计划 P6 拖动)。把 [EditState.offsetX]/[EditState.offsetY] 夹紧到
+ * 窗口完全落在内容 `[-1,1]` 内(`|c| ≤ 1 - half`)—— 任何比例 × 缩放 × 偏移组合都不越界、
+ * 不露黑边。预览平移(graphicsLayer)与导出 [cropEffect] 共用此真值(WYSIWYG)。
+ */
+fun clampedCropCenter(state: EditState): Pair<Float, Float> {
+    val (halfW, halfH) = centerCropHalfExtents(state)
+    return state.offsetX.coerceIn(halfW - 1f, 1f - halfW) to
+        state.offsetY.coerceIn(halfH - 1f, 1f - halfH)
+}
+
+/**
+ * 比例/缩放变化后把偏移夹回合法域**并回写 state**(实施计划 P6 步骤 4):
+ * 否则 raw 偏移停在界外,反向拖动要先"空拖"回界内才生效(死区)。
+ */
+fun EditState.withClampedOffsets(): EditState {
+    val (cx, cy) = clampedCropCenter(this)
+    return copy(offsetX = cx, offsetY = cy)
+}
