@@ -26,8 +26,8 @@ import kotlinx.coroutines.isActive
  * 截取页 / 预览页内嵌视频预览。
  *
  * - ExoPlayer + PlayerView(布局 `R.layout.video_preview`):`surface_type=texture_view`
- *   避免外框尺寸变化时的 SurfaceView 黑闪;`resize_mode=fill` 避免切比例瞬间「框≠内容比例」
- *   被 letterbox 露黑边(稳态外框比例 == 输出比例,fill 即等比无拉伸)。
+ *   避免外框尺寸变化时的 SurfaceView 黑闪;`resize_mode=zoom` 等比缩放填满外框、裁掉溢出,
+ *   外框与内容比例不一致时也不露黑边(只裁切不留黑)。
  * - **prepare 前**先 `setVideoEffects(buildVideoEffects)` 接通效果管线(P3 硬约束)。
  * - 循环播放当前选区 `[clipStartMs, clipEndMs]`(近似:seek 到 start、到 end 回跳;
  *   选区随滑块实时变化,无需重建播放器)。

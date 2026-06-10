@@ -2,13 +2,15 @@
 <!--
   预览用 PlayerView:
   - surface_type=texture_view:平滑缩放、不重建表面(避免 SurfaceView 黑闪);
-  - resize_mode=fit:按内容真实比例显示。外框比例由调用方用**播放器回写的真实宽高比**给定,
-    二者一致 → 填满无缝、且与导出 cropEffect 同一比例真值,预览==导出。
+  - resize_mode=zoom:**media3 1.10.1 开 setVideoEffects 后实际不生效**——Player 不上报
+    videoSize(b/292111083),AspectRatioFrameLayout 拿到 0 恒不调整。无黑边由调用方保证:
+    把本视图尺寸定成**源视频比例**(效果管线 SCALE_TO_FIT 进 surface 时恒为 no-op),
+    溢出部分由外层裁切。zoom 仅作为未来版本修复 size 上报后的兜底(裁切而非 letterbox)。
 -->
 <androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     app:surface_type="texture_view"
-    app:resize_mode="fit"
+    app:resize_mode="zoom"
     app:use_controller="false" />

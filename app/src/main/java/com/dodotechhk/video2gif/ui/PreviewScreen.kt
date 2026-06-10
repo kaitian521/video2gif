@@ -5,6 +5,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
@@ -36,7 +39,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.AspectRatio
 import com.dodotechhk.video2gif.EditState
-import com.dodotechhk.video2gif.centerCropHalfExtents
 import com.dodotechhk.video2gif.MediaStoreSaver
 import com.dodotechhk.video2gif.VideoExporter
 import kotlinx.coroutines.launch
@@ -82,16 +84,18 @@ fun PreviewScreen(
             style = MaterialTheme.typography.bodyMedium,
         )
 
-        // 预览(剪映式):**取景框固定**(outputAspectRatio 居中),**视频缩放**(graphicsLayer)。
-        // 视频以基准尺寸显示(scale=1 时取景框恰好框住比例裁剪区),再按 state.scale 放大;
-        // 框里 = 导出保留区(与 cropEffect 同一真值)。表面尺寸不随手势变 → 不抖不闪。
+        // 预览:无取景框,裁切窗口(外框)**严格等于所选比例**。
+        // 尺寸规则:outAR ≤ 9/15 → 定高(占满可用高),宽自适应;否则定宽(占满可用宽),高自适应。
+        // 无黑边的实现:PlayerView 始终保持**源比例**并 cover 外框,溢出由 clipToBounds 裁掉
+        // (中心裁切)。不能依赖 resize_mode:media3 1.10.1 启用 setVideoEffects 后
+        // Player 不上报 videoSize(b/292111083),AspectRatioFrameLayout 拿到 0 恒不调整;
+        // 且效果管线会把画面 SCALE_TO_FIT(letterbox)进 surface —— 只有让 surface 比例
+        // 恒等于内容比例,letterbox 才恒为 no-op。可见区域 == 导出 cropEffect 的中心
+        // 裁剪窗口(同一真值,WYSIWYG)。
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .clipToBounds()
-                // 黑底:压暗区盖在黑上仍是黑,不再因主题浅色透出灰框(bug1)。
-                .background(Color.Black)
                 // 双指缩放:放大视频;夹在 [1, MAX_SCALE]。
                 .pointerInput(Unit) {
                     detectTransformGestures { _, _, zoom, _ ->
@@ -106,41 +110,46 @@ fun PreviewScreen(
             contentAlignment = Alignment.Center,
         ) {
             val outAR = state.outputAspectRatio
-            // 取景框:outAR **FIT 进画布**,贴住限制方向的两条边(只在另一方向留 gap),不再四周缩边距。
-            val (fw, fh) = if (maxWidth / outAR <= maxHeight) {
-                maxWidth to maxWidth / outAR
-            } else {
+            val (vw, vh) = if (outAR <= 9f / 15f) {
                 maxHeight * outAR to maxHeight
+            } else {
+                maxWidth to maxWidth / outAR
             }
-            // 视频基准尺寸:scale=1 时取景框恰好框住比例裁剪区(aspect-only 半宽/半高)。
-            val (aHalfW, aHalfH) = centerCropHalfExtents(state.copy(scale = 1f))
-            val vw0 = fw / aHalfW
-            val vh0 = fh / aHalfH
 
-            // 满帧播放:预览不裁不缩(aspect=Original、scale=1);缩放由 graphicsLayer 表现,导出才真裁。
-            VideoPreview(
-                state = state.copy(aspect = AspectRatio.Original, scale = 1f),
-                onVideoDisplaySize = { vwPx, vhPx ->
-                    // 用播放器真实尺寸校正源宽高比,让预览几何与导出 Crop 同源(否则框≠导出)。
-                    val reported = vwPx.toFloat() / vhPx
-                    if (kotlin.math.abs(reported - currentState.sourceAspectRatio) > 0.01f) {
-                        onChange(currentState.copy(displayWidth = vwPx, displayHeight = vhPx))
-                    }
-                },
+            // 满帧播放:预览不裁不缩(aspect=Original、scale=1);视觉裁切 = 源比例 cover 外框
+            // + clipToBounds,缩放由 graphicsLayer 表现,导出才真裁。
+            Box(
                 modifier = Modifier
-                    .width(vw0)
-                    .height(vh0)
-                    .graphicsLayer {
-                        scaleX = state.scale
-                        scaleY = state.scale
+                    .width(vw)
+                    .height(vh)
+                    .clipToBounds()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center,
+            ) {
+                // 源比例 cover 外框:源更宽 → 定高、左右溢出;源更高 → 定宽、上下溢出。
+                // requiredWidth/Height 允许超出父约束(Compose 自动居中溢出部分)。
+                val srcAR = state.sourceAspectRatio
+                val (videoW, videoH) = if (srcAR >= outAR) vh * srcAR to vh else vw to vw / srcAR
+                VideoPreview(
+                    state = state.copy(aspect = AspectRatio.Original, scale = 1f),
+                    onVideoDisplaySize = { vwPx, vhPx ->
+                        // 用播放器真实尺寸校正源宽高比,让预览几何与导出 Crop 同源(否则框≠导出)。
+                        // 注:1.10.1 开 setVideoEffects 后此回调不触发(b/292111083),
+                        // 实际依赖导入时 MMR 读到的 displayWidth/Height;留作版本升级后的兜底。
+                        val reported = vwPx.toFloat() / vhPx
+                        if (kotlin.math.abs(reported - currentState.sourceAspectRatio) > 0.01f) {
+                            onChange(currentState.copy(displayWidth = vwPx, displayHeight = vhPx))
+                        }
                     },
-            )
-            // 固定取景框 + 框外压暗。**用同一个 fw/fh**,保证白框 == 视频填满区域(避免框内留缝)。
-            CropFrameOverlay(
-                frameWidth = fw,
-                frameHeight = fh,
-                modifier = Modifier.fillMaxSize(),
-            )
+                    modifier = Modifier
+                        .requiredWidth(videoW)
+                        .requiredHeight(videoH)
+                        .graphicsLayer {
+                            scaleX = state.scale
+                            scaleY = state.scale
+                        },
+                )
+            }
         }
 
         // P4:比例选择(原始 / 1:1 / 3:4 / 4:3 / 16:9 / 9:16),即时生效、无黑边。
