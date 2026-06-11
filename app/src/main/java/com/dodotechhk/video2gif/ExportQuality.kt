@@ -10,10 +10,10 @@ package com.dodotechhk.video2gif
  * 档位定位:低 = 体积优先(可感知的妥协)、中 = 均衡、高 = 质量优先、
  * 超高 = 逐帧调色板(体积显著增大)、Max = 不计体积的质量天花板。
  */
-enum class ExportQuality(val label: String, val k: Float) {
-    Low("Low", 0.06f),
-    Medium("Medium", 0.16f),
-    High("High", 0.4f),
-    ExtraHigh("Extra High", 0.8f),
-    Max("Max", 1.6f),
+enum class ExportQuality(val labelRes: Int, val k: Float) {
+    Low(R.string.quality_low, 0.06f),
+    Medium(R.string.quality_medium, 0.16f),
+    High(R.string.quality_high, 0.4f),
+    ExtraHigh(R.string.quality_extra_high, 0.8f),
+    Max(R.string.quality_max, 1.6f),
 }

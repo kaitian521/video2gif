@@ -34,8 +34,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
+import androidx.compose.ui.res.stringResource
 import com.dodotechhk.video2gif.ClipConstraints
 import com.dodotechhk.video2gif.EditState
+import com.dodotechhk.video2gif.R
 import com.dodotechhk.video2gif.clampEndMs
 import com.dodotechhk.video2gif.clampStartMs
 import com.dodotechhk.video2gif.exceedsMaxClip
@@ -78,10 +80,13 @@ fun TrimScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.back),
+                )
             }
             Text(
-                "Trim",
+                stringResource(R.string.trim_title),
                 style = MaterialTheme.typography.titleLarge,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f),
@@ -92,7 +97,10 @@ fun TrimScreen(
                     if (exceedsMaxClip(state.clipStartMs, state.clipEndMs)) {
                         Toast.makeText(
                             context,
-                            "Max ${ClipConstraints.MAX_CLIP_MS / 1000} seconds",
+                            context.getString(
+                                R.string.trim_max_seconds,
+                                ClipConstraints.MAX_CLIP_MS / 1000,
+                            ),
                             Toast.LENGTH_SHORT,
                         ).show()
                     } else {
@@ -100,7 +108,7 @@ fun TrimScreen(
                     }
                 },
                 enabled = valid,
-            ) { Text("Next") }
+            ) { Text(stringResource(R.string.next)) }
         }
 
         // 视频预览:**高度固定**,宽度按源视频显示比例自适应,无黑边。
@@ -139,11 +147,16 @@ fun TrimScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                "${fmtSec(length)} selected",
+                stringResource(R.string.trim_selected, fmtSec(length)),
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                "${fmtSec(state.clipStartMs)} – ${fmtSec(state.clipEndMs)} · source ${fmtSec(state.durationMs)}",
+                stringResource(
+                    R.string.trim_range_source,
+                    fmtSec(state.clipStartMs),
+                    fmtSec(state.clipEndMs),
+                    fmtSec(state.durationMs),
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -200,7 +213,11 @@ fun TrimScreen(
         }
 
         Text(
-            "Min ${ClipConstraints.MIN_CLIP_MS / 1000f}s · max ${ClipConstraints.MAX_CLIP_MS / 1000}s",
+            stringResource(
+                R.string.trim_min_max,
+                "${ClipConstraints.MIN_CLIP_MS / 1000f}s",
+                "${ClipConstraints.MAX_CLIP_MS / 1000}s",
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -209,7 +226,7 @@ fun TrimScreen(
 
         if (!valid) {
             Text(
-                "Invalid range",
+                stringResource(R.string.trim_invalid_range),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,

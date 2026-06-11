@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ 按应用语言设置的支持清单(BCP-47)。与 build.gradle 的 localeFilters
+     及 res/values-xx 目录保持同步:20 种使用人数最多的语言。 -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="zh" />
+    <locale android:name="hi" />
+    <locale android:name="es" />
+    <locale android:name="fr" />
+    <locale android:name="ar" />
+    <locale android:name="bn" />
+    <locale android:name="pt" />
+    <locale android:name="ru" />
+    <locale android:name="ur" />
+    <locale android:name="id" />
+    <locale android:name="de" />
+    <locale android:name="ja" />
+    <locale android:name="sw" />
+    <locale android:name="mr" />
+    <locale android:name="te" />
+    <locale android:name="tr" />
+    <locale android:name="ta" />
+    <locale android:name="vi" />
+    <locale android:name="ko" />
+</locale-config>

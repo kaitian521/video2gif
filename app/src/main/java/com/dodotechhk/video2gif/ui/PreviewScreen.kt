@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -60,6 +61,7 @@ import com.dodotechhk.video2gif.ExportPrefs
 import com.dodotechhk.video2gif.ExportQuality
 import com.dodotechhk.video2gif.FormatConverter
 import com.dodotechhk.video2gif.MediaStoreSaver
+import com.dodotechhk.video2gif.R
 import com.dodotechhk.video2gif.centerCropHalfExtents
 import com.dodotechhk.video2gif.clampedCropCenter
 import com.dodotechhk.video2gif.withClampedOffsets
@@ -151,11 +153,12 @@ fun PreviewScreen(
             if (uri != null) {
                 savedResult = uri to format
                 val dir = if (format.isVideo) "Movies" else "Pictures"
-                exportStatus = "Saved to gallery ($dir/Video2gif, ${format.label}): $detail"
+                exportStatus =
+                    context.getString(R.string.status_saved_gallery, dir, format.label, detail)
                 showSuccessDialog = true
             } else {
-                exportStatus = "Export OK ($detail), but saving to gallery failed"
-                toast("Export failed: saving to gallery failed")
+                exportStatus = context.getString(R.string.status_saved_failed, detail)
+                toast(context.getString(R.string.toast_save_failed))
             }
         }
     }
@@ -168,7 +171,12 @@ fun PreviewScreen(
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(android.content.Intent.createChooser(send, "Share ${format.label}"))
+        context.startActivity(
+            android.content.Intent.createChooser(
+                send,
+                context.getString(R.string.share_title, format.label),
+            )
+        )
     }
 
     // 启动一次导出(P8+P9):Transformer 先出中间 mp4;mp4 直存,GIF/WebP 再跑 ffmpeg 转码。
@@ -180,31 +188,40 @@ fun PreviewScreen(
         ExportPrefs.save(context, state) // 记住本次选择,下次导入作为默认。
         val format = state.format
         val twoPhase = !format.isVideo
-        val phase1 = if (twoPhase) "1/2 encoding mp4" else "Exporting mp4"
-        exportStatus = "$phase1… (keep app open)"
+        val phase1 = context.getString(
+            if (twoPhase) R.string.status_phase1_mp4_two else R.string.status_phase1_mp4
+        )
+        exportStatus = context.getString(R.string.status_running, phase1)
         val mp4File = File(context.cacheDir, "export_intermediate.mp4")
         exportSession = VideoExporter.export(
             context, state, mp4File,
-            onProgress = { p -> exportStatus = "$phase1 $p%… (keep app open)" },
+            onProgress = { p ->
+                exportStatus = context.getString(R.string.status_running_progress, phase1, p)
+            },
         ) { result ->
             exportSession = null
             when (result) {
                 is VideoExporter.Result.Success -> {
                     val size = "${result.width}×${result.height}, ${result.durationMs} ms"
                     if (!twoPhase) {
-                        exportStatus = "Export OK: $size, saving to gallery…"
+                        exportStatus = context.getString(R.string.status_export_ok_saving, size)
                         finishWithSave(mp4File, ExportFormat.Mp4, size)
                     } else {
                         // P9:对中间 mp4 跑 ffmpeg(fps+调色板/libwebp_anim,不 scale)。
                         // ffmpeg-kit 回调在后台线程,经 scope.launch 切回主线程更新 UI。
-                        exportStatus = "2/2 converting to ${format.label}… (keep app open)"
+                        val phase2 = context.getString(R.string.status_phase2_convert, format.label)
+                        exportStatus = context.getString(R.string.status_running, phase2)
                         val outFile = File(context.cacheDir, "export_out.${format.extension}")
                         convertSession = FormatConverter.convert(
                             mp4File, outFile, format, state.quality,
                             fps = state.maxFps,
                             expectedDurationMs = result.durationMs,
                             onProgress = { p ->
-                                scope.launch { exportStatus = "2/2 converting to ${format.label} $p%… (keep app open)" }
+                                scope.launch {
+                                    exportStatus = context.getString(
+                                        R.string.status_running_progress, phase2, p,
+                                    )
+                                }
                             },
                         ) { convResult ->
                             scope.launch {
@@ -212,20 +229,29 @@ fun PreviewScreen(
                                 mp4File.delete() // 中间 mp4 用完即清。
                                 when (convResult) {
                                     is FormatConverter.Result.Success -> {
-                                        exportStatus = "Conversion OK: $size, saving to gallery…"
+                                        exportStatus = context.getString(
+                                            R.string.status_convert_ok_saving, size,
+                                        )
                                         finishWithSave(outFile, format, size)
                                     }
 
                                     is FormatConverter.Result.Error -> {
                                         exporting = false
                                         showExportSheet = false
-                                        exportStatus = "Conversion failed: ${convResult.message} (leftovers cleaned)"
-                                        toast("Export failed: ${format.label} conversion error")
+                                        exportStatus = context.getString(
+                                            R.string.status_convert_failed, convResult.message,
+                                        )
+                                        toast(
+                                            context.getString(
+                                                R.string.toast_convert_failed, format.label,
+                                            )
+                                        )
                                     }
 
                                     FormatConverter.Result.Cancelled -> {
                                         exporting = false
-                                        exportStatus = "Cancelled (output cleaned)"
+                                        exportStatus =
+                                            context.getString(R.string.status_cancelled)
                                     }
                                 }
                             }
@@ -236,13 +262,13 @@ fun PreviewScreen(
                 is VideoExporter.Result.Error -> {
                     exporting = false
                     showExportSheet = false
-                    exportStatus = "Export failed: ${result.message} (leftovers cleaned)"
-                    toast("Export failed: ${result.message}")
+                    exportStatus = context.getString(R.string.status_export_failed, result.message)
+                    toast(context.getString(R.string.toast_export_failed, result.message))
                 }
 
                 VideoExporter.Result.Cancelled -> {
                     exporting = false
-                    exportStatus = "Cancelled (output cleaned)"
+                    exportStatus = context.getString(R.string.status_cancelled)
                 }
             }
         }
@@ -264,10 +290,13 @@ fun PreviewScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.back),
+                )
             }
             Text(
-                "Preview",
+                stringResource(R.string.preview_title),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
@@ -383,7 +412,7 @@ fun PreviewScreen(
             }
             // 手势提示:半透明胶囊,叠在预览底部居中,不挡操作(无点击)。
             Text(
-                "Pinch to zoom · Drag to move",
+                stringResource(R.string.preview_gesture_hint),
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White,
                 modifier = Modifier
@@ -406,7 +435,13 @@ fun PreviewScreen(
                     selected = state.aspect == aspect,
                     // 切比例后把偏移夹回新窗口的合法域(消除空拖死区)。
                     onClick = { onStateChange(state.copy(aspect = aspect).withClampedOffsets()) },
-                    label = { Text(aspect.label) },
+                    // 仅「原始」可翻译;比例字符串(1:1 等)各语言通用。
+                    label = {
+                        Text(
+                            if (aspect.ratio == null) stringResource(R.string.aspect_original)
+                            else aspect.label
+                        )
+                    },
                     colors = accentChipColors(),
                 )
             }
@@ -420,7 +455,7 @@ fun PreviewScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val speedStyle = MaterialTheme.typography.bodyMedium
-            Text("Speed", style = speedStyle)
+            Text(stringResource(R.string.speed), style = speedStyle)
             Slider(
                 value = state.speed,
                 onValueChange = { onStateChange(state.copy(speed = it)) },
@@ -450,7 +485,9 @@ fun PreviewScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp),
         ) {
-            Text(if (exporting) "Exporting…" else "Export")
+            Text(
+                stringResource(if (exporting) R.string.exporting else R.string.export)
+            )
         }
     }
 
@@ -467,7 +504,10 @@ fun PreviewScreen(
                     .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text("Export Options", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    stringResource(R.string.export_options),
+                    style = MaterialTheme.typography.titleLarge,
+                )
 
                 // 统一的「标题在上、选项在下」分组:标题用 titleSmall 突出层次。
                 @Composable
@@ -484,7 +524,7 @@ fun PreviewScreen(
                 }
 
                 // P9 格式:默认 GIF;mp4 直出,GIF/WebP 由 ffmpeg 对中间 mp4 转码。
-                OptionSection("Format") {
+                OptionSection(stringResource(R.string.export_format)) {
                     ExportFormat.values().forEach { f ->
                         FilterChip(
                             selected = state.format == f,
@@ -497,7 +537,7 @@ fun PreviewScreen(
                 }
 
                 // 分辨率(目标高度,px;宽按比例派生)= 像素尺寸唯一真值(Presentation.createForHeight)。
-                OptionSection("Resolution") {
+                OptionSection(stringResource(R.string.export_resolution)) {
                     RESOLUTION_HEIGHTS.forEach { h ->
                         FilterChip(
                             selected = state.targetHeight == h,
@@ -510,7 +550,7 @@ fun PreviewScreen(
                 }
 
                 // 最大帧率五档:mp4 setFrameRate 上限 / GIF·WebP fps 滤镜(与清晰度解耦)。
-                OptionSection("Frame rate") {
+                OptionSection(stringResource(R.string.export_frame_rate)) {
                     MAX_FPS_OPTIONS.forEach { fps ->
                         FilterChip(
                             selected = state.maxFps == fps,
@@ -523,13 +563,13 @@ fun PreviewScreen(
                 }
 
                 // 清晰度五档(mp4 码率 k×W×H×maxFps / GIF 颜色抖动 / WebP q;§10.2 已标定)。
-                OptionSection("Quality") {
+                OptionSection(stringResource(R.string.export_quality)) {
                     ExportQuality.values().forEach { q ->
                         FilterChip(
                             selected = state.quality == q,
                             enabled = !exporting,
                             onClick = { onStateChange(state.copy(quality = q)) },
-                            label = { Text(q.label) },
+                            label = { Text(stringResource(q.labelRes)) },
                             colors = accentChipColors(),
                         )
                     }
@@ -547,7 +587,11 @@ fun PreviewScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                 ) {
-                    Text(if (exporting) "Exporting…" else "Start Export")
+                    Text(
+                        stringResource(
+                            if (exporting) R.string.exporting else R.string.start_export
+                        )
+                    )
                 }
                 if (exporting) {
                     // 按当前阶段取消:阶段 1 中止 Transformer,阶段 2 中止 ffmpeg。
@@ -559,7 +603,7 @@ fun PreviewScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
-                    ) { Text("Cancel") }
+                    ) { Text(stringResource(R.string.cancel)) }
                 }
                 // P10:导出成功后可直接分享相册里的产物。
                 if (!exporting && savedResult != null) {
@@ -568,7 +612,7 @@ fun PreviewScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
-                    ) { Text("Share") }
+                    ) { Text(stringResource(R.string.share)) }
                 }
             }
         }
@@ -584,18 +628,24 @@ fun PreviewScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Export Success", modifier = Modifier.weight(1f))
+                    Text(
+                        stringResource(R.string.export_success),
+                        modifier = Modifier.weight(1f),
+                    )
                     IconButton(onClick = { showSuccessDialog = false }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Close")
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.close),
+                        )
                     }
                 }
             },
-            text = { Text("Saved to gallery ($savedDir/Video2gif). You can share it now.") },
+            text = { Text(stringResource(R.string.export_saved_dialog, savedDir)) },
             confirmButton = {
                 Button(onClick = {
                     showSuccessDialog = false
                     shareSaved()
-                }) { Text("Share") }
+                }) { Text(stringResource(R.string.share)) }
             },
         )
     }

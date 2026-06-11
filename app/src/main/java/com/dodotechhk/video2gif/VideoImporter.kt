@@ -48,14 +48,16 @@ object VideoImporter {
 
     suspend fun import(context: Context, uri: Uri): Result = withContext(Dispatchers.IO) {
         val meta = readMeta(context, uri)
-            ?: return@withContext Result.Error("Cannot read video duration")
+            ?: return@withContext Result.Error(context.getString(R.string.import_error_duration))
         if (meta.durationMs <= MIN_DURATION_MS) {
             return@withContext Result.TooShort(meta.durationMs)
         }
         val localPath = try {
             resolveReadablePath(context, uri) ?: copyToCache(context, uri)
         } catch (e: Exception) {
-            return@withContext Result.Error("Failed to copy video: ${e.message}")
+            return@withContext Result.Error(
+                context.getString(R.string.import_error_copy, e.message ?: "")
+            )
         }
         Result.Success(uri, localPath, meta.durationMs, meta.width, meta.height)
     }

@@ -20,10 +20,19 @@ private enum class Screen { Trim, Preview }
 fun Video2gifApp(modifier: Modifier = Modifier) {
     var editState by remember { mutableStateOf<EditState?>(null) }
     var screen by remember { mutableStateOf(Screen.Trim) }
+    // 设置页:仅从首页(导入页)进入,覆盖显示。
+    var showSettings by remember { mutableStateOf(false) }
+
+    if (showSettings) {
+        BackHandler { showSettings = false }
+        SettingsScreen(onBack = { showSettings = false }, modifier = modifier)
+        return
+    }
 
     when (val current = editState) {
         null -> ImportScreen(
             onImported = { editState = it; screen = Screen.Trim },
+            onSettings = { showSettings = true },
             modifier = modifier,
         )
 

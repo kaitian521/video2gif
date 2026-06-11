@@ -62,6 +62,23 @@ android {
     buildFeatures {
         compose = true
     }
+
+    androidResources {
+        // 20 种支持语言(资源目录限定符,Indonesian 为旧码 "in"):
+        // 显式声明支持集,并把依赖库携带的其它 locale 资源裁掉。
+        localeFilters += listOf(
+            "en", "zh", "hi", "es", "fr", "ar", "bn", "pt", "ru", "ur",
+            "in", "de", "ja", "sw", "mr", "te", "tr", "ta", "vi", "ko",
+        )
+    }
+
+    bundle {
+        language {
+            // AAB 不按语言拆分:20 种语言全部打进 base APK,
+            // 侧载/无 Play 分发场景语言包也完整(用户要求保证打入 apk/aab)。
+            enableSplit = false
+        }
+    }
 }
 
 kotlin {
