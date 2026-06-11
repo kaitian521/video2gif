@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -76,9 +77,6 @@ private val MAX_FPS_OPTIONS = listOf(10, 15, 20, 25, 30)
 /** P7 变速范围(>0,下限远离 0 避免输出时长/体积爆炸,§5.4)。 */
 private const val SPEED_MIN = 0.5f
 private const val SPEED_MAX = 2f
-
-/** 滑竿值按 0.05 步进取整:1× 可精确选中,且去掉浮点尾数噪声。 */
-private fun snapSpeed(speed: Float): Float = (speed * 20).roundToInt() / 20f
 
 /** 速度显示:最多两位小数,去尾零(1×、1.5×、0.55×)。 */
 private fun formatSpeed(speed: Float): String =
@@ -361,6 +359,17 @@ fun PreviewScreen(
                         .border(2.dp, Color.White),
                 )
             }
+            // 手势提示:半透明胶囊,叠在预览底部居中,不挡操作(无点击)。
+            Text(
+                "Pinch to zoom · Drag to move",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp)
+                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
         }
 
         // P4:比例选择(原始 / 1:1 / 3:4 / 4:3 / 16:9 / 9:16),即时生效、无黑边。
@@ -380,7 +389,7 @@ fun PreviewScreen(
             }
         }
 
-        // P7:变速滑竿(0.5×–2× 连续可选,0.05 步进)。时间轴变换:
+        // P7:变速滑竿(0.5×–2×,连续无步进)。时间轴变换:
         // 预览播放器倍速 / 导出 setSpeed,同一 state.speed。
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -391,7 +400,7 @@ fun PreviewScreen(
             Text("Speed", style = speedStyle)
             Slider(
                 value = state.speed,
-                onValueChange = { onStateChange(state.copy(speed = snapSpeed(it))) },
+                onValueChange = { onStateChange(state.copy(speed = it)) },
                 valueRange = SPEED_MIN..SPEED_MAX,
                 modifier = Modifier.weight(1f),
             )
@@ -410,19 +419,15 @@ fun PreviewScreen(
             )
         }
 
-        Text(
-            "Aspect: ${state.aspect.label} · Zoom: ${"%.1f".format(state.scale)}× · " +
-                "Speed: ${formatSpeed(state.speed)}" +
-                (if (state.speed != 1f) " · output ≈ ${(length / state.speed).toLong()} ms" else "") +
-                " (drag to move, pinch to zoom, double-tap to reset)",
-            style = MaterialTheme.typography.bodySmall,
-        )
-
         // 底部操作:打开导出面板(返回已上移到顶栏图标)。导出选项全部收进 ModalBottomSheet。
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { showExportSheet = true }) {
-                Text(if (exporting) "Exporting…" else "Export")
-            }
+        // 通栏按钮:距屏幕左右各 40dp(Column 16dp + 此处 24dp)。
+        Button(
+            onClick = { showExportSheet = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+        ) {
+            Text(if (exporting) "Exporting…" else "Export")
         }
     }
 
