@@ -61,6 +61,8 @@ dependencies {
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.ui)
     implementation(libs.kotlinx.coroutines.android)
+    // P9 GIF/WebP 转码:ffmpeg-kit 社区 fork(16KB 对齐,LGPLv3;带 .so,见技术方案 §5.2/§8)
+    implementation(libs.ffmpeg.kit)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

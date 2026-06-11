@@ -57,6 +57,8 @@ data class EditState(
     val speed: Float = 1f,
     /** P8 清晰度档位:决定导出码率(k×W×H×fps)与最大输出帧率;**不影响像素几何**。 */
     val quality: ExportQuality = ExportQuality.Medium,
+    /** P9 导出格式:默认 GIF;mp4 直出,GIF/WebP 对中间 mp4 二次转码([FormatConverter])。 */
+    val format: ExportFormat = ExportFormat.Gif,
 ) {
     /** 源视频显示宽高比(宽/高);读不到尺寸时回退 16:9。供截取页按比例定宽用。 */
     val sourceAspectRatio: Float

@@ -47,7 +47,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.AspectRatio
 import com.dodotechhk.video2gif.EditState
+import com.dodotechhk.video2gif.ExportFormat
 import com.dodotechhk.video2gif.ExportQuality
+import com.dodotechhk.video2gif.FormatConverter
 import com.dodotechhk.video2gif.MediaStoreSaver
 import com.dodotechhk.video2gif.centerCropHalfExtents
 import com.dodotechhk.video2gif.clampedCropCenter
@@ -98,33 +100,82 @@ fun PreviewScreen(
     var exportSession by remember(state.sourceUri) {
         mutableStateOf<VideoExporter.ExportSession?>(null)
     }
+    // P9 二次转码会话(GIF/WebP 阶段);取消按钮按当前阶段中止对应会话。
+    var convertSession by remember(state.sourceUri) {
+        mutableStateOf<FormatConverter.ConvertSession?>(null)
+    }
     // 点「导出」弹出底部面板,所有导出选项集中其中。
     var showExportSheet by remember(state.sourceUri) { mutableStateOf(false) }
 
-    // 启动一次导出:进度轮询 + 取消;成功后落相册。导出与面板可见性解耦(关面板不中断导出)。
+    // 把产物落相册并收尾(成功/失败都结束导出态)。
+    val finishWithSave: (File, ExportFormat, String) -> Unit = { file, format, detail ->
+        scope.launch {
+            val uri = MediaStoreSaver.save(context, file, format)
+            // 中间产物/已复制完的 cache 文件都清掉(P10:不留残留)。
+            file.delete()
+            exporting = false
+            exportStatus = if (uri != null) {
+                val dir = if (format.isVideo) "Movies" else "Pictures"
+                "已存到相册($dir/Video2gif,${format.label}):$detail"
+            } else {
+                "导出 OK($detail),但存相册失败"
+            }
+        }
+    }
+
+    // 启动一次导出(P8+P9):Transformer 先出中间 mp4;mp4 直存,GIF/WebP 再跑 ffmpeg 转码。
+    // 导出与面板可见性解耦(关面板不中断导出)。
     val startExport = startExport@{
         if (exporting) return@startExport
         exporting = true
-        exportStatus = "导出中…(勿切后台)"
-        val outFile = File(context.cacheDir, "harness_export.mp4")
+        val format = state.format
+        val twoPhase = !format.isVideo
+        val phase1 = if (twoPhase) "1/2 转码 mp4" else "导出 mp4"
+        exportStatus = "$phase1…(勿切后台)"
+        val mp4File = File(context.cacheDir, "export_intermediate.mp4")
         exportSession = VideoExporter.export(
-            context, state, outFile,
-            onProgress = { p -> exportStatus = "导出中 $p%…(勿切后台)" },
+            context, state, mp4File,
+            onProgress = { p -> exportStatus = "$phase1 $p%…(勿切后台)" },
         ) { result ->
             exportSession = null
             when (result) {
                 is VideoExporter.Result.Success -> {
-                    val size = "${result.width}×${result.height}" +
-                        "(rotation=${result.rotation},期望高=${state.targetHeight}," +
-                        "时长 ${result.durationMs} ms)"
-                    exportStatus = "导出 OK:$size,存相册中…"
-                    scope.launch {
-                        val uri = MediaStoreSaver.saveVideo(context, outFile)
-                        exporting = false
-                        exportStatus = if (uri != null) {
-                            "已存到相册(Movies/Video2gif):$size"
-                        } else {
-                            "导出 OK:$size,但存相册失败"
+                    val size = "${result.width}×${result.height},时长 ${result.durationMs} ms"
+                    if (!twoPhase) {
+                        exportStatus = "导出 OK:$size,存相册中…"
+                        finishWithSave(mp4File, ExportFormat.Mp4, size)
+                    } else {
+                        // P9:对中间 mp4 跑 ffmpeg(fps+调色板/libwebp_anim,不 scale)。
+                        // ffmpeg-kit 回调在后台线程,经 scope.launch 切回主线程更新 UI。
+                        exportStatus = "2/2 转码 ${format.label}…(勿切后台)"
+                        val outFile = File(context.cacheDir, "export_out.${format.extension}")
+                        convertSession = FormatConverter.convert(
+                            mp4File, outFile, format, state.quality,
+                            expectedDurationMs = result.durationMs,
+                            onProgress = { p ->
+                                scope.launch { exportStatus = "2/2 转码 ${format.label} $p%…(勿切后台)" }
+                            },
+                        ) { convResult ->
+                            scope.launch {
+                                convertSession = null
+                                mp4File.delete() // 中间 mp4 用完即清。
+                                when (convResult) {
+                                    is FormatConverter.Result.Success -> {
+                                        exportStatus = "转码 OK:$size,存相册中…"
+                                        finishWithSave(outFile, format, size)
+                                    }
+
+                                    is FormatConverter.Result.Error -> {
+                                        exporting = false
+                                        exportStatus = "转码失败:${convResult.message}(残留已清理)"
+                                    }
+
+                                    FormatConverter.Result.Cancelled -> {
+                                        exporting = false
+                                        exportStatus = "已取消(产物已清理)"
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -346,6 +397,23 @@ fun PreviewScreen(
             ) {
                 Text("导出", style = MaterialTheme.typography.titleLarge)
 
+                // P9 格式:默认 GIF;mp4 直出,GIF/WebP 由 ffmpeg 对中间 mp4 转码。
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("格式", style = MaterialTheme.typography.bodyMedium)
+                    ExportFormat.values().forEach { f ->
+                        FilterChip(
+                            selected = state.format == f,
+                            enabled = !exporting,
+                            onClick = { onStateChange(state.copy(format = f)) },
+                            label = { Text(f.label) },
+                        )
+                    }
+                }
+
                 // 分辨率(目标高度,px;宽按比例派生)= 像素尺寸唯一真值(Presentation.createForHeight)。
                 Text("分辨率", style = MaterialTheme.typography.bodyMedium)
                 Row(
@@ -390,7 +458,11 @@ fun PreviewScreen(
                         Text(if (exporting) "导出中…" else "开始导出")
                     }
                     if (exporting) {
-                        OutlinedButton(onClick = { exportSession?.cancel() }) { Text("取消") }
+                        // 按当前阶段取消:阶段 1 中止 Transformer,阶段 2 中止 ffmpeg。
+                        OutlinedButton(onClick = {
+                            exportSession?.cancel()
+                            convertSession?.cancel()
+                        }) { Text("取消") }
                     }
                 }
             }
