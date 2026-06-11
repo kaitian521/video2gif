@@ -3,8 +3,10 @@ package com.dodotechhk.video2gif
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
@@ -19,8 +21,9 @@ import java.io.File
  * 目的:在 P4–P6 之前就能用**同一条 [buildVideoEffects]** 一键导出 mp4,验证
  * `targetHeight` 的真实输出尺寸(PlayerView 会缩放显示,肉眼看不出),并为后续像素能力做对拍。
  *
- * 当前只覆盖 P3 所需:`ClippingConfiguration`(选区)+ `setRemoveAudio` + 视觉效果链 + H264。
- * **变速、码率、帧率等留到 P7/P8**(见实施计划)。`experimentalSetTrimOptimizationEnabled(false)`
+ * 当前覆盖:`ClippingConfiguration`(选区)+ `setRemoveAudio` + 视觉效果链 + H264
+ * + 变速 `setSpeed`(P7,§5.4)。**码率、帧率(`setFrameRate(maxOutputFps)`)、进度、
+ * 取消清理留到 P8/P11**(见实施计划)。`experimentalSetTrimOptimizationEnabled(false)`
  * 显式锁定逐帧精确前提(§3),不依赖默认值。
  */
 object VideoExporter {
@@ -67,6 +70,14 @@ object VideoExporter {
             .setRemoveAudio(true)
             // 与预览共用同一条视觉效果链 → WYSIWYG。
             .setEffects(Effects(emptyList(), buildVideoEffects(state)))
+            .apply {
+                // P7 变速:时间轴变换走 setSpeed(§5.4),绝不进 buildVideoEffects;
+                // 设了 setSpeed 后效果链里不允许再有改时间戳的 effect(当前没有)。
+                // 1× 不设置,保持默认路径与此前完全一致。
+                if (state.speed > 0f && state.speed != 1f) {
+                    setSpeed(constantSpeedProvider(state.speed))
+                }
+            }
             .build()
 
         val transformer = Transformer.Builder(context)
@@ -90,6 +101,12 @@ object VideoExporter {
             .build()
 
         transformer.start(edited, outFile.absolutePath)
+    }
+
+    /** 恒定速度 SpeedProvider(技术方案 §5.4):速度恒为 [speed],无后续变化点。 */
+    private fun constantSpeedProvider(speed: Float): SpeedProvider = object : SpeedProvider {
+        override fun getSpeed(timeUs: Long): Float = speed
+        override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
     }
 
     /** 读回导出文件的编码宽/高/旋转;读不到回退 0。 */

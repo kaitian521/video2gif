@@ -65,6 +65,14 @@ fun VideoPreview(
         player.setVideoEffects(buildVideoEffects(state))
     }
 
+    // P7 变速:播放器级倍速(时间轴变换,**不进效果链**,§5.4);与导出 setSpeed 同一 state.speed。
+    // 音频已静音(volume=0),变速不会带出变调的声音,与无音轨导出一致。
+    LaunchedEffect(player, state.speed) {
+        if (player.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) {
+            player.setPlaybackSpeed(state.speed)
+        }
+    }
+
     // 用 rememberUpdatedState 让循环始终读到最新选区。
     val startMs by rememberUpdatedState(state.clipStartMs)
     val endMs by rememberUpdatedState(state.clipEndMs)

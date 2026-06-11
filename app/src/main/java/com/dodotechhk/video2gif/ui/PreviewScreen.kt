@@ -22,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,6 +39,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.AspectRatio
 import com.dodotechhk.video2gif.EditState
@@ -48,9 +51,21 @@ import com.dodotechhk.video2gif.withClampedOffsets
 import com.dodotechhk.video2gif.VideoExporter
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.roundToInt
 
 /** 最大放大倍数(取景窗口最多缩到 1/MAX_SCALE)。 */
 private const val MAX_SCALE = 8f
+
+/** P7 变速范围(>0,下限远离 0 避免输出时长/体积爆炸,§5.4)。 */
+private const val SPEED_MIN = 0.5f
+private const val SPEED_MAX = 2f
+
+/** 滑竿值按 0.05 步进取整:1× 可精确选中,且去掉浮点尾数噪声。 */
+private fun snapSpeed(speed: Float): Float = (speed * 20).roundToInt() / 20f
+
+/** 速度显示:最多两位小数,去尾零(1×、1.5×、0.55×)。 */
+private fun formatSpeed(speed: Float): String =
+    "${"%.2f".format(speed).trimEnd('0').trimEnd('.')}×"
 
 /**
  * P3 预览页:独立于截取页,承载效果管线预览(`buildVideoEffects` → ExoPlayer.setVideoEffects)。
@@ -211,8 +226,40 @@ fun PreviewScreen(
             }
         }
 
+        // P7:变速滑竿(0.5×–2× 连续可选,0.05 步进)。时间轴变换:
+        // 预览播放器倍速 / 导出 setSpeed,同一 state.speed。
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val speedStyle = MaterialTheme.typography.bodyMedium
+            Text("速度", style = speedStyle)
+            Slider(
+                value = state.speed,
+                onValueChange = { onStateChange(state.copy(speed = snapSpeed(it))) },
+                valueRange = SPEED_MIN..SPEED_MAX,
+                modifier = Modifier.weight(1f),
+            )
+            // 数值定宽(按最宽样本 "9.99×" 实测):文字随值变宽会挤压 weight 滑竿的
+            // 轨道宽度,thumb 位置跟着重算 → 抖。定宽后轨道宽度恒定。
+            val textMeasurer = rememberTextMeasurer()
+            val density = LocalDensity.current
+            val valueWidth = remember(textMeasurer, speedStyle, density) {
+                with(density) { textMeasurer.measure("9.99×", speedStyle).size.width.toDp() }
+            }
+            Text(
+                formatSpeed(state.speed),
+                style = speedStyle,
+                textAlign = TextAlign.End,
+                modifier = Modifier.width(valueWidth),
+            )
+        }
+
         Text(
-            "比例:${state.aspect.label} · 缩放:${"%.1f".format(state.scale)}×" +
+            "比例:${state.aspect.label} · 缩放:${"%.1f".format(state.scale)}× · " +
+                "速度:${formatSpeed(state.speed)}" +
+                (if (state.speed != 1f) " · 输出 ≈ ${(length / state.speed).toLong()} ms" else "") +
                 "(拖动移位,双指缩放,双击复位)",
             style = MaterialTheme.typography.bodySmall,
         )

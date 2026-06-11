@@ -10,12 +10,12 @@ import android.net.Uri
  * - P2 `clipStartMs` / `clipEndMs`
  * - P3 `targetHeight`
  * - P4 `aspect`
- * - P5 `scale`(旋转未做)
+ * - P5 `scale`(旋转 pending)
  * - P6 `offsetX` / `offsetY`
+ * - P7 `speed`(时间轴变换,不进 [buildVideoEffects])
  *
  * 后续阶段继续往里加:
- * - P5 余项 `rotation`
- * - P7 `speed`(时间轴变换,不进 [buildVideoEffects])
+ * - P5 余项 `rotation`(pending)
  */
 data class EditState(
     /** 相册选中的原始 `content://` Uri(仅用于预览/读取,**绝不**直接拼进 ffmpeg)。 */
@@ -48,6 +48,13 @@ data class EditState(
     val offsetX: Float = 0f,
     /** 同 [offsetX],竖直方向(正值 = 窗口偏向内容上部)。 */
     val offsetY: Float = 0f,
+    /**
+     * P7 变速:播放/导出速度倍率(>0,UI 滑竿限定 [0.5, 2],0.05 步进)。
+     * **时间轴变换,绝不进 [buildVideoEffects]**(会改帧时间戳,效果链不支持):
+     * 预览走播放器倍速 `setPlaybackSpeed`,导出走 `EditedMediaItem.Builder#setSpeed`(§5.4)。
+     * 输出时长 = 选取时长 ÷ speed;成品最小时长语义(÷speed ≥ 500ms)待 §10.6 定稿。
+     */
+    val speed: Float = 1f,
 ) {
     /** 源视频显示宽高比(宽/高);读不到尺寸时回退 16:9。供截取页按比例定宽用。 */
     val sourceAspectRatio: Float
