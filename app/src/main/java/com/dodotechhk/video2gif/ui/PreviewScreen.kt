@@ -26,6 +26,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,12 +64,24 @@ import com.dodotechhk.video2gif.centerCropHalfExtents
 import com.dodotechhk.video2gif.clampedCropCenter
 import com.dodotechhk.video2gif.withClampedOffsets
 import com.dodotechhk.video2gif.VideoExporter
+import com.dodotechhk.video2gif.ui.theme.ChipSelected
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.roundToInt
 
 /** 最大放大倍数(取景窗口最多缩到 1/MAX_SCALE)。 */
 private const val MAX_SCALE = 8f
+
+/**
+ * 选中态强调色 chips(比例 / 导出面板各选项组共用):默认 secondaryContainer 在暗黑模式下
+ * 发暗、选中不明显,改用强调橙 + 深色文字(明暗主题都鲜明);导出中禁用时选中项保留半透橙。
+ */
+@Composable
+private fun accentChipColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = ChipSelected,
+    selectedLabelColor = Color.Black,
+    disabledSelectedContainerColor = ChipSelected.copy(alpha = 0.5f),
+)
 
 /** 可选输出分辨率(目标高度,px;宽按比例派生)。技术方案 §导出参数。 */
 private val RESOLUTION_HEIGHTS = listOf(240, 360, 480, 540, 720, 1080)
@@ -394,6 +407,7 @@ fun PreviewScreen(
                     // 切比例后把偏移夹回新窗口的合法域(消除空拖死区)。
                     onClick = { onStateChange(state.copy(aspect = aspect).withClampedOffsets()) },
                     label = { Text(aspect.label) },
+                    colors = accentChipColors(),
                 )
             }
         }
@@ -477,6 +491,7 @@ fun PreviewScreen(
                             enabled = !exporting,
                             onClick = { onStateChange(state.copy(format = f)) },
                             label = { Text(f.label) },
+                            colors = accentChipColors(),
                         )
                     }
                 }
@@ -489,6 +504,7 @@ fun PreviewScreen(
                             enabled = !exporting,
                             onClick = { onStateChange(state.copy(targetHeight = h)) },
                             label = { Text("${h}p") },
+                            colors = accentChipColors(),
                         )
                     }
                 }
@@ -501,6 +517,7 @@ fun PreviewScreen(
                             enabled = !exporting,
                             onClick = { onStateChange(state.copy(maxFps = fps)) },
                             label = { Text("$fps") },
+                            colors = accentChipColors(),
                         )
                     }
                 }
@@ -513,6 +530,7 @@ fun PreviewScreen(
                             enabled = !exporting,
                             onClick = { onStateChange(state.copy(quality = q)) },
                             label = { Text(q.label) },
+                            colors = accentChipColors(),
                         )
                     }
                 }

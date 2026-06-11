@@ -40,6 +40,7 @@ import com.dodotechhk.video2gif.clampEndMs
 import com.dodotechhk.video2gif.clampStartMs
 import com.dodotechhk.video2gif.exceedsMaxClip
 import com.dodotechhk.video2gif.isValidClip
+import com.dodotechhk.video2gif.ui.theme.TrimHandle
 
 /** 毫秒 → 一位小数的秒("12.3s"),给所有时间文案统一观感。 */
 private fun fmtSec(ms: Long): String = "%.1fs".format(ms / 1000f)
@@ -174,8 +175,8 @@ fun TrimScreen(
                 // 松手即从左滑竿重新播放。
                 onValueChangeFinished = { restartTrigger++ },
                 valueRange = 0f..state.durationMs.toFloat(),
-                // 左右两个滑竿手柄为黑色;中间选中段轨道保持主题蓝。
-                colors = SliderDefaults.colors(thumbColor = Color.Black),
+                // 左右两个滑竿手柄用中明度橙(明暗主题都清晰、非黑白);选中段轨道保持主题色。
+                colors = SliderDefaults.colors(thumbColor = TrimHandle),
                 modifier = Modifier.fillMaxWidth(),
             )
 
