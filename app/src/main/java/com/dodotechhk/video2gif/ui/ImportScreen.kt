@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.EditState
+import com.dodotechhk.video2gif.ExportPrefs
 import com.dodotechhk.video2gif.VideoImporter
 import com.dodotechhk.video2gif.defaultClipEndMs
 import kotlinx.coroutines.launch
@@ -58,14 +59,18 @@ fun ImportScreen(
                 is VideoImporter.Result.Success -> {
                     status = ImportStatus.Idle
                     onImported(
-                        EditState(
-                            sourceUri = result.uri,
-                            sourceLocalPath = result.localPath,
-                            durationMs = result.durationMs,
-                            displayWidth = result.displayWidth,
-                            displayHeight = result.displayHeight,
-                            clipStartMs = 0L,
-                            clipEndMs = defaultClipEndMs(result.durationMs),
+                        // 导出相关字段(格式/分辨率/帧率/清晰度)套用上次导出的选择。
+                        ExportPrefs.applyTo(
+                            context,
+                            EditState(
+                                sourceUri = result.uri,
+                                sourceLocalPath = result.localPath,
+                                durationMs = result.durationMs,
+                                displayWidth = result.displayWidth,
+                                displayHeight = result.displayHeight,
+                                clipStartMs = 0L,
+                                clipEndMs = defaultClipEndMs(result.durationMs),
+                            ),
                         )
                     )
                 }

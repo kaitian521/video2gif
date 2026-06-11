@@ -36,7 +36,7 @@ data class EditState(
      * 预览/导出的目标高度(px),宽度由内容比例派生。取偶数以满足 H.264 编码器对偶数维度的要求;
      * 派生宽度的偶数对齐由导出端 encoder 兜底。详见 [buildVideoEffects] 的 `Presentation`(P3)。
      */
-    val targetHeight: Int = 720,
+    val targetHeight: Int = 360,
     /** 目标比例(P4 中心裁剪);默认「原始」= 不裁。详见 [centerCropHalfExtents]。 */
     val aspect: AspectRatio = AspectRatio.Original,
     /** P5 缩放:取景窗口放大倍数(≥1,1=不放大)。放大 → 裁剪窗口相对更小(halfW/s, halfH/s)。 */
@@ -59,9 +59,9 @@ data class EditState(
     val quality: ExportQuality = ExportQuality.Medium,
     /**
      * 最大输出帧率(UI 五档 10/15/20/25/30):mp4 `setFrameRate` 上限(speed>1 防爆高,§5.4),
-     * GIF/WebP 的 `fps` 滤镜直接用它。默认 15(GIF 工具的均衡值)。
+     * GIF/WebP 的 `fps` 滤镜直接用它。默认 10(体积优先;上次导出的选择会覆盖,见 [ExportPrefs])。
      */
-    val maxFps: Int = 15,
+    val maxFps: Int = 10,
     /** P9 导出格式:默认 GIF;mp4 直出,GIF/WebP 对中间 mp4 二次转码([FormatConverter])。 */
     val format: ExportFormat = ExportFormat.Gif,
 ) {

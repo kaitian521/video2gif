@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.AspectRatio
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.ExportFormat
+import com.dodotechhk.video2gif.ExportPrefs
 import com.dodotechhk.video2gif.ExportQuality
 import com.dodotechhk.video2gif.FormatConverter
 import com.dodotechhk.video2gif.MediaStoreSaver
@@ -114,6 +115,11 @@ fun PreviewScreen(
         mutableStateOf<Pair<android.net.Uri, ExportFormat>?>(null)
     }
 
+    // 失败提示:面板可能已被关掉,exportStatus 看不到 → Toast 兜底。
+    val toastFail: (String) -> Unit = { msg ->
+        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+    }
+
     // 把产物落相册并收尾(成功/失败都结束导出态)。
     val finishWithSave: (File, ExportFormat, String) -> Unit = { file, format, detail ->
         scope.launch {
@@ -127,6 +133,7 @@ fun PreviewScreen(
                 exportStatus = "已存到相册($dir/Video2gif,${format.label}):$detail"
             } else {
                 exportStatus = "导出 OK($detail),但存相册失败"
+                toastFail("存相册失败")
             }
         }
     }
@@ -148,6 +155,7 @@ fun PreviewScreen(
         if (exporting) return@startExport
         exporting = true
         savedResult = null // 新一轮导出,旧产物不再供分享(相册里仍在)。
+        ExportPrefs.save(context, state) // 记住本次选择,下次导入作为默认。
         val format = state.format
         val twoPhase = !format.isVideo
         val phase1 = if (twoPhase) "1/2 转码 mp4" else "导出 mp4"
@@ -189,6 +197,7 @@ fun PreviewScreen(
                                     is FormatConverter.Result.Error -> {
                                         exporting = false
                                         exportStatus = "转码失败:${convResult.message}(残留已清理)"
+                                        toastFail("转码 ${format.label} 失败")
                                     }
 
                                     FormatConverter.Result.Cancelled -> {
@@ -204,6 +213,7 @@ fun PreviewScreen(
                 is VideoExporter.Result.Error -> {
                     exporting = false
                     exportStatus = "导出失败:${result.message}(残留已清理)"
+                    toastFail("导出失败:${result.message}")
                 }
 
                 VideoExporter.Result.Cancelled -> {
