@@ -148,11 +148,11 @@ fun TrimScreen(
             )
         }
 
-        // 滑块 + 播放进度细条。左右各 +15dp,避开手机侧边手势区(叠加在 Column 的 24dp 之上)。
+        // 滑块 + 播放进度细条。左右各 +30dp(叠加 Column 的 16dp),远离全面屏侧边手势区。
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 15.dp),
+                .padding(horizontal = 30.dp),
         ) {
             // 轨道两端各内缩一个滑块半径,使细条与滑竿落在同一坐标系。
             val thumbRadius = 10.dp
