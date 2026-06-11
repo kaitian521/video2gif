@@ -12,6 +12,7 @@ import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -162,7 +163,14 @@ object VideoExporter {
             })
             .build()
 
-        transformer.start(edited, outFile.absolutePath)
+        // HDR 策略(§10.5 定稿):统一 tone map 到 SDR。输出格式(GIF 256 色/WebP 8-bit/H264 8-bit)
+        // 均承载不了 HDR;OpenGL 模式 API 29+ 广泛可用,SDR 源为 no-op,故无条件设置、不做检测分支。
+        val composition = Composition.Builder(
+            EditedMediaItemSequence.Builder(edited).build()
+        )
+            .setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL)
+            .build()
+        transformer.start(composition, outFile.absolutePath)
         handler.post(pollProgress)
 
         return ExportSession {
