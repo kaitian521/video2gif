@@ -55,6 +55,8 @@ data class EditState(
      * 输出时长 = 选取时长 ÷ speed;成品最小时长语义(÷speed ≥ 500ms)待 §10.6 定稿。
      */
     val speed: Float = 1f,
+    /** P8 清晰度档位:决定导出码率(k×W×H×fps)与最大输出帧率;**不影响像素几何**。 */
+    val quality: ExportQuality = ExportQuality.Medium,
 ) {
     /** 源视频显示宽高比(宽/高);读不到尺寸时回退 16:9。供截取页按比例定宽用。 */
     val sourceAspectRatio: Float

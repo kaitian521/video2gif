@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.AspectRatio
 import com.dodotechhk.video2gif.EditState
+import com.dodotechhk.video2gif.ExportQuality
 import com.dodotechhk.video2gif.MediaStoreSaver
 import com.dodotechhk.video2gif.centerCropHalfExtents
 import com.dodotechhk.video2gif.clampedCropCenter
@@ -84,9 +85,12 @@ fun PreviewScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val length = state.clipEndMs - state.clipStartMs
-    // 最小导出 harness 状态:验证 targetHeight 真实输出尺寸 + 产物相册可见。
+    // 导出 harness 状态:验证 targetHeight 真实输出尺寸 + 产物相册可见 + 进度/取消(P8)。
     var exportStatus by remember(state.sourceUri) { mutableStateOf("") }
     var exporting by remember(state.sourceUri) { mutableStateOf(false) }
+    var exportSession by remember(state.sourceUri) {
+        mutableStateOf<VideoExporter.ExportSession?>(null)
+    }
 
     // 手势用最新 state/回调(pointerInput 闭包内避免读到旧值)。
     val currentState by rememberUpdatedState(state)
@@ -264,7 +268,23 @@ fun PreviewScreen(
             style = MaterialTheme.typography.bodySmall,
         )
 
-        // P3 收尾:最小导出 harness,导出后读回编码尺寸,验证 targetHeight 真实生效。
+        // P8:清晰度三档(码率 = k×W×H×fps + 最大输出帧率;数值待 P11 标定)。
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("清晰度", style = MaterialTheme.typography.bodyMedium)
+            ExportQuality.values().forEach { q ->
+                FilterChip(
+                    selected = state.quality == q,
+                    onClick = { onStateChange(state.copy(quality = q)) },
+                    label = { Text(q.label) },
+                )
+            }
+        }
+
+        // P8 导出:进度轮询 + 取消;导出后读回编码尺寸/时长(验 targetHeight 与变速时间轴)。
         if (exportStatus.isNotEmpty()) {
             Text(exportStatus, style = MaterialTheme.typography.bodyMedium)
         }
@@ -275,13 +295,18 @@ fun PreviewScreen(
                 enabled = !exporting,
                 onClick = {
                     exporting = true
-                    exportStatus = "导出中…"
+                    exportStatus = "导出中…(勿切后台)"
                     val outFile = File(context.cacheDir, "harness_export.mp4")
-                    VideoExporter.export(context, state, outFile) { result ->
+                    exportSession = VideoExporter.export(
+                        context, state, outFile,
+                        onProgress = { p -> exportStatus = "导出中 $p%…(勿切后台)" },
+                    ) { result ->
+                        exportSession = null
                         when (result) {
                             is VideoExporter.Result.Success -> {
                                 val size = "${result.width}×${result.height}" +
-                                    "(rotation=${result.rotation},期望高=${state.targetHeight})"
+                                    "(rotation=${result.rotation},期望高=${state.targetHeight}," +
+                                    "时长 ${result.durationMs} ms)"
                                 exportStatus = "导出 OK:$size,存相册中…"
                                 // 发布到系统相册(IO 线程),回报结果。
                                 scope.launch {
@@ -297,12 +322,20 @@ fun PreviewScreen(
 
                             is VideoExporter.Result.Error -> {
                                 exporting = false
-                                exportStatus = "导出失败:${result.message}"
+                                exportStatus = "导出失败:${result.message}(残留已清理)"
+                            }
+
+                            VideoExporter.Result.Cancelled -> {
+                                exporting = false
+                                exportStatus = "已取消(产物已清理)"
                             }
                         }
                     }
                 },
             ) { Text(if (exporting) "导出中…" else "导出测试(验尺寸)") }
+            if (exporting) {
+                OutlinedButton(onClick = { exportSession?.cancel() }) { Text("取消") }
+            }
         }
     }
 }

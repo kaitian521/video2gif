@@ -15,10 +15,10 @@
 | P4 比例(中心裁剪) | ✅ 完成 | AspectRatio + centerCropHalfExtents + cropEffect;预览裁切窗口严格按比例、无黑边 |
 | P5 缩放 / 旋转 | 🟡 部分 | 缩放完成(双指 + 双击复位,纯 Crop 实现);旋转 **⏸ pending**(主动挂起) |
 | P6 拖动改变位置 | ✅ 完成(待真机复核) | offset 折进 Crop 窗口 + 夹紧;单指拖动跟手、不露黑边(单测兜底) |
-| P8 导出 | 🟡 雏形 | VideoExporter 一遍出无音轨 mp4;缺变速 / 码率 / 帧率 / 进度 / WYSIWYG 对拍 |
-| P10 保存 | 🟡 雏形 | MediaStoreSaver 落相册 + 日期元数据;缺取消清理 / 分享 |
+| P8 导出 mp4 | 🟡 代码完成 | 步骤 1–7 全落地(三档码率 / 帧率上限 / 进度 / 取消清理);**WYSIWYG 对拍待真机** |
+| P10 保存 | 🟡 雏形 | MediaStoreSaver 落相册 + 日期元数据;缺分享(取消清理已在 P8 落地) |
 | P7 变速 | ✅ 完成(待真机复核) | 滑竿 0.5×–2×(0.05 步进);预览播放器倍速 / 导出 setSpeed,同一 state.speed |
-| P9 / P11 | ⬜ 未开始 | 下一步:P8 补全(码率 / 帧率 / 进度 / WYSIWYG 对拍) |
+| P9 / P11 | ⬜ 未开始 | 下一步:P9 GIF(或先真机跑 P8 对拍) |
 
 技术栈:Kotlin 2.2.10 / Compose(BOM 2026.02.01)/ AGP 9.2.1 / compileSdk 37 / minSdk 24 / Java·Kotlin 21 / Media3 **1.10.1**。
 
@@ -197,6 +197,26 @@ P4/P5 最初为「固定取景框 + 框外压暗」(剪映式)。按新交互改
 
 ---
 
+## P8 导出 mp4(代码完成,对拍待真机)
+
+**目标**:Transformer 一遍出无音轨 mp4,所见即所得(第一个 WYSIWYG 验收点)。
+
+**已实现(计划步骤 1–7 全部)**
+- 此前已有:Clipping 选区、removeAudio、同一条 `buildVideoEffects`、H264、`trimOptimization(false)` 显式关闭(§3)、变速 `setSpeed`(P7)。
+- 本次补全:
+  - **三档码率**(步骤 3):`bitrate = k × 输出宽 × 输出高 × maxOutputFps`,经 `DefaultEncoderFactory.setRequestedVideoEncoderSettings` 下发;`ExportQuality` 低/中/高 = k 0.05/0.1/0.2、fps 30(**初值,P11 §10.2/§10.6 标定**);`EditState.quality` + 预览页「清晰度」chips。
+  - **`setFrameRate(maxOutputFps)`**(步骤 2 补全):speed>1 时防输出帧率爆高(§5.4)。
+  - **进度**(步骤 5):`getProgress(ProgressHolder)` 主线程 200ms 轮询(无推送式进度),UI「导出中 N%…(勿切后台)」。
+  - **失败/取消清理**(步骤 6):`onError` 删产物;`ExportSession.cancel()`(幂等)= `transformer.cancel()` + 删产物 + `Result.Cancelled`;UI 取消按钮。
+  - Success 读回**输出时长**,真机直接对「≈ 选取时长 ÷ speed」。
+
+**验收(DoD,全部待真机)**
+- ⏳ WYSIWYG 对拍矩阵(**speed=1**):比例/缩放/拖动/分辨率组合到明显值,预览帧 vs 导出帧同位置比对。
+- ⏳ 变速单验时间轴:输出时长 = 选取时长 ÷ speed;抽帧时间映射 `clipStartMs + outputTimeMs × speed`。
+- ⏳ 竖屏源导出方向正常;体积 ≈ `bitrate × 输出时长 / 8`(三档差异符合 4 倍跨度)。
+
+---
+
 ## 待真机交互验收(设备 PIN 锁,暂无法自动驱动)
 
 以下需在解锁手机后手动确认:
@@ -207,11 +227,12 @@ P4/P5 最初为「固定取景框 + 框外压暗」(剪映式)。按新交互改
 4. **预览页(重构后)**:切各比例外框按 9/15 规则变形(≤9/15 定高,否则定宽);**画面无黑边、只裁切**;双指缩放/双击复位正常;导出尺寸与预览可见区域一致。
 5. **P6 拖动**:放大后任意方向拖动跟手 1:1、不露黑边;放大拖到角再缩小不留空拖死区;拖动后导出画面与预览可见区域一致。
 6. **P7 变速**:拖速度滑竿播放快慢明显、无声、其他效果不受影响;滑竿拖动不抖;2× 导出时长 ≈ 选取时长一半。
+7. **P8 导出**:进度百分比推进、取消后状态正确且 cache 无残留;三档清晰度体积差异明显;WYSIWYG 对拍矩阵(见 P8 节 DoD)。
 
 ---
 
 ## 下一步
 
-- **P8 补全**:三档码率(`k×W×H×fps`)、`setFrameRate(maxOutputFps)`、`getProgress` 进度、失败/取消清理、**WYSIWYG 对拍矩阵**(speed=1 同帧截图比对 + 变速单验时间轴)。
-- 真机回归上节验收清单。
-- ⏸ pending:P5 旋转(挂起,核心链路 P8→P9 跑通后再评估,见 P5 节)。
+- **真机**:P8 WYSIWYG 对拍矩阵 + 上节验收清单(P1–P8 一起回归)。
+- **P9**:mp4 → GIF(ffmpeg-kit 社区 fork 选型/锁版本/许可是主要工作量;filtergraph 只调 fps + palettegen/paletteuse + dither 三档)。
+- ⏸ pending:P5 旋转(挂起,核心链路 P9 跑通后再评估,见 P5 节)。
