@@ -19,11 +19,14 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +78,7 @@ private fun formatSpeed(speed: Float): String =
  * 当前仅 `Presentation`(P3 骨架);P4–P6 的比例/缩放/旋转/拖动控件后续叠加到此页,
  * 通过 [onStateChange] 回写 [EditState] 触发 `applyEffects`。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PreviewScreen(
     state: EditState,
@@ -90,6 +94,49 @@ fun PreviewScreen(
     var exporting by remember(state.sourceUri) { mutableStateOf(false) }
     var exportSession by remember(state.sourceUri) {
         mutableStateOf<VideoExporter.ExportSession?>(null)
+    }
+    // 点「导出」弹出底部面板,所有导出选项集中其中。
+    var showExportSheet by remember(state.sourceUri) { mutableStateOf(false) }
+
+    // 启动一次导出:进度轮询 + 取消;成功后落相册。导出与面板可见性解耦(关面板不中断导出)。
+    val startExport = startExport@{
+        if (exporting) return@startExport
+        exporting = true
+        exportStatus = "导出中…(勿切后台)"
+        val outFile = File(context.cacheDir, "harness_export.mp4")
+        exportSession = VideoExporter.export(
+            context, state, outFile,
+            onProgress = { p -> exportStatus = "导出中 $p%…(勿切后台)" },
+        ) { result ->
+            exportSession = null
+            when (result) {
+                is VideoExporter.Result.Success -> {
+                    val size = "${result.width}×${result.height}" +
+                        "(rotation=${result.rotation},期望高=${state.targetHeight}," +
+                        "时长 ${result.durationMs} ms)"
+                    exportStatus = "导出 OK:$size,存相册中…"
+                    scope.launch {
+                        val uri = MediaStoreSaver.saveVideo(context, outFile)
+                        exporting = false
+                        exportStatus = if (uri != null) {
+                            "已存到相册(Movies/Video2gif):$size"
+                        } else {
+                            "导出 OK:$size,但存相册失败"
+                        }
+                    }
+                }
+
+                is VideoExporter.Result.Error -> {
+                    exporting = false
+                    exportStatus = "导出失败:${result.message}(残留已清理)"
+                }
+
+                VideoExporter.Result.Cancelled -> {
+                    exporting = false
+                    exportStatus = "已取消(产物已清理)"
+                }
+            }
+        }
     }
 
     // 手势用最新 state/回调(pointerInput 闭包内避免读到旧值)。
@@ -268,73 +315,58 @@ fun PreviewScreen(
             style = MaterialTheme.typography.bodySmall,
         )
 
-        // P8:清晰度三档(码率 = k×W×H×fps + 最大输出帧率;数值待 P11 标定)。
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("清晰度", style = MaterialTheme.typography.bodyMedium)
-            ExportQuality.values().forEach { q ->
-                FilterChip(
-                    selected = state.quality == q,
-                    onClick = { onStateChange(state.copy(quality = q)) },
-                    label = { Text(q.label) },
-                )
-            }
-        }
-
-        // P8 导出:进度轮询 + 取消;导出后读回编码尺寸/时长(验 targetHeight 与变速时间轴)。
-        if (exportStatus.isNotEmpty()) {
-            Text(exportStatus, style = MaterialTheme.typography.bodyMedium)
-        }
-
+        // 底部操作:返回截取 / 打开导出面板。导出选项全部收进 ModalBottomSheet。
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = onBack) { Text("返回截取") }
-            Button(
-                enabled = !exporting,
-                onClick = {
-                    exporting = true
-                    exportStatus = "导出中…(勿切后台)"
-                    val outFile = File(context.cacheDir, "harness_export.mp4")
-                    exportSession = VideoExporter.export(
-                        context, state, outFile,
-                        onProgress = { p -> exportStatus = "导出中 $p%…(勿切后台)" },
-                    ) { result ->
-                        exportSession = null
-                        when (result) {
-                            is VideoExporter.Result.Success -> {
-                                val size = "${result.width}×${result.height}" +
-                                    "(rotation=${result.rotation},期望高=${state.targetHeight}," +
-                                    "时长 ${result.durationMs} ms)"
-                                exportStatus = "导出 OK:$size,存相册中…"
-                                // 发布到系统相册(IO 线程),回报结果。
-                                scope.launch {
-                                    val uri = MediaStoreSaver.saveVideo(context, outFile)
-                                    exporting = false
-                                    exportStatus = if (uri != null) {
-                                        "已存到相册(Movies/Video2gif):$size"
-                                    } else {
-                                        "导出 OK:$size,但存相册失败"
-                                    }
-                                }
-                            }
+            Button(onClick = { showExportSheet = true }) {
+                Text(if (exporting) "导出中…" else "导出")
+            }
+        }
+    }
 
-                            is VideoExporter.Result.Error -> {
-                                exporting = false
-                                exportStatus = "导出失败:${result.message}(残留已清理)"
-                            }
+    // 导出面板:清晰度三档 + 开始导出 + 进度/取消,集中在底部弹片。
+    if (showExportSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showExportSheet = false },
+            sheetState = rememberModalBottomSheetState(),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text("导出", style = MaterialTheme.typography.titleLarge)
 
-                            VideoExporter.Result.Cancelled -> {
-                                exporting = false
-                                exportStatus = "已取消(产物已清理)"
-                            }
-                        }
+                // 清晰度三档(码率 = k×W×H×fps + 最大输出帧率;数值待 P11 标定)。
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("清晰度", style = MaterialTheme.typography.bodyMedium)
+                    ExportQuality.values().forEach { q ->
+                        FilterChip(
+                            selected = state.quality == q,
+                            enabled = !exporting,
+                            onClick = { onStateChange(state.copy(quality = q)) },
+                            label = { Text(q.label) },
+                        )
                     }
-                },
-            ) { Text(if (exporting) "导出中…" else "导出测试(验尺寸)") }
-            if (exporting) {
-                OutlinedButton(onClick = { exportSession?.cancel() }) { Text("取消") }
+                }
+
+                if (exportStatus.isNotEmpty()) {
+                    Text(exportStatus, style = MaterialTheme.typography.bodyMedium)
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(enabled = !exporting, onClick = { startExport() }) {
+                        Text(if (exporting) "导出中…" else "开始导出")
+                    }
+                    if (exporting) {
+                        OutlinedButton(onClick = { exportSession?.cancel() }) { Text("取消") }
+                    }
+                }
             }
         }
     }
