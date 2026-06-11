@@ -253,10 +253,15 @@ fun PreviewScreen(
                                 translationY = cy * size.height / 2f * s
                             },
                     )
-                    // 白色预览框:作为视频之后的兄弟节点画在最上层,贴外框内缘。
-                    // 外框 == 裁切窗口 == 导出保留区,框线所在即导出边界。
-                    Box(Modifier.matchParentSize().border(2.dp, Color.White))
                 }
+                // 白色预览框:画在播放器**外缘**——盒子比裁切窗口大一圈(2dp),边线落在窗口外侧,
+                // 不再覆盖视频边缘像素。与裁切窗口同心(同在居中的手势 Box 内)。
+                Box(
+                    Modifier
+                        .width(vw + 4.dp)
+                        .height(vh + 4.dp)
+                        .border(2.dp, Color.White),
+                )
             }
         }
 
