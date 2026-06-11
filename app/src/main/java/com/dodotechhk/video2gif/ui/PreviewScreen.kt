@@ -60,6 +60,9 @@ import kotlin.math.roundToInt
 /** 最大放大倍数(取景窗口最多缩到 1/MAX_SCALE)。 */
 private const val MAX_SCALE = 8f
 
+/** 可选输出分辨率(目标高度,px;宽按比例派生)。技术方案 §导出参数。 */
+private val RESOLUTION_HEIGHTS = listOf(240, 360, 480, 540, 720, 1080)
+
 /** P7 变速范围(>0,下限远离 0 避免输出时长/体积爆炸,§5.4)。 */
 private const val SPEED_MIN = 0.5f
 private const val SPEED_MAX = 2f
@@ -342,6 +345,24 @@ fun PreviewScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text("导出", style = MaterialTheme.typography.titleLarge)
+
+                // 分辨率(目标高度,px;宽按比例派生)= 像素尺寸唯一真值(Presentation.createForHeight)。
+                Text("分辨率", style = MaterialTheme.typography.bodyMedium)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    RESOLUTION_HEIGHTS.forEach { h ->
+                        FilterChip(
+                            selected = state.targetHeight == h,
+                            enabled = !exporting,
+                            onClick = { onStateChange(state.copy(targetHeight = h)) },
+                            label = { Text("${h}p") },
+                        )
+                    }
+                }
 
                 // 清晰度三档(码率 = k×W×H×fps + 最大输出帧率;数值待 P11 标定)。
                 Row(
