@@ -106,6 +106,10 @@ fun PreviewScreen(
     }
     // 点「导出」弹出底部面板,所有导出选项集中其中。
     var showExportSheet by remember(state.sourceUri) { mutableStateOf(false) }
+    // P10:最近一次导出成功的产物(相册 Uri + 格式),供「分享」;新一次导出开始时清空。
+    var savedResult by remember(state.sourceUri) {
+        mutableStateOf<Pair<android.net.Uri, ExportFormat>?>(null)
+    }
 
     // 把产物落相册并收尾(成功/失败都结束导出态)。
     val finishWithSave: (File, ExportFormat, String) -> Unit = { file, format, detail ->
@@ -114,13 +118,25 @@ fun PreviewScreen(
             // 中间产物/已复制完的 cache 文件都清掉(P10:不留残留)。
             file.delete()
             exporting = false
-            exportStatus = if (uri != null) {
+            if (uri != null) {
+                savedResult = uri to format
                 val dir = if (format.isVideo) "Movies" else "Pictures"
-                "已存到相册($dir/Video2gif,${format.label}):$detail"
+                exportStatus = "已存到相册($dir/Video2gif,${format.label}):$detail"
             } else {
-                "导出 OK($detail),但存相册失败"
+                exportStatus = "导出 OK($detail),但存相册失败"
             }
         }
+    }
+
+    // P10 分享:把相册里的产物经系统分享面板发出去(MediaStore uri 可直接授权读)。
+    val shareSaved = shareSaved@{
+        val (uri, format) = savedResult ?: return@shareSaved
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = format.mimeType
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(send, "分享 ${format.label}"))
     }
 
     // 启动一次导出(P8+P9):Transformer 先出中间 mp4;mp4 直存,GIF/WebP 再跑 ffmpeg 转码。
@@ -128,6 +144,7 @@ fun PreviewScreen(
     val startExport = startExport@{
         if (exporting) return@startExport
         exporting = true
+        savedResult = null // 新一轮导出,旧产物不再供分享(相册里仍在)。
         val format = state.format
         val twoPhase = !format.isVideo
         val phase1 = if (twoPhase) "1/2 转码 mp4" else "导出 mp4"
@@ -463,6 +480,10 @@ fun PreviewScreen(
                             exportSession?.cancel()
                             convertSession?.cancel()
                         }) { Text("取消") }
+                    }
+                    // P10:导出成功后可直接分享相册里的产物。
+                    if (!exporting && savedResult != null) {
+                        OutlinedButton(onClick = { shareSaved() }) { Text("分享") }
                     }
                 }
             }
