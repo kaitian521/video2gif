@@ -4,7 +4,7 @@ package com.dodotechhk.video2gif
  * 目标比例(实施计划 P4)。[ratio] = 宽/高;`null` 表示「原始」(用源比例,不裁)。
  */
 enum class AspectRatio(val label: String, val ratio: Float?) {
-    Original("原始", null),
+    Original("Original", null),
     Square("1:1", 1f),
     ThreeFour("3:4", 3f / 4f),
     FourThree("4:3", 4f / 3f),

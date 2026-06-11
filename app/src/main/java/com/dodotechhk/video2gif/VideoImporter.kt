@@ -48,14 +48,14 @@ object VideoImporter {
 
     suspend fun import(context: Context, uri: Uri): Result = withContext(Dispatchers.IO) {
         val meta = readMeta(context, uri)
-            ?: return@withContext Result.Error("无法读取视频时长")
+            ?: return@withContext Result.Error("Cannot read video duration")
         if (meta.durationMs <= MIN_DURATION_MS) {
             return@withContext Result.TooShort(meta.durationMs)
         }
         val localPath = try {
             resolveReadablePath(context, uri) ?: copyToCache(context, uri)
         } catch (e: Exception) {
-            return@withContext Result.Error("复制视频到本地失败:${e.message}")
+            return@withContext Result.Error("Failed to copy video: ${e.message}")
         }
         Result.Success(uri, localPath, meta.durationMs, meta.width, meta.height)
     }
@@ -110,7 +110,7 @@ object VideoImporter {
     private fun copyToCache(context: Context, uri: Uri): String {
         val outFile = File(context.cacheDir, "imported_source.${extensionFor(context, uri)}")
         val input = context.contentResolver.openInputStream(uri)
-            ?: throw IllegalStateException("无法打开输入流")
+            ?: throw IllegalStateException("Cannot open input stream")
         input.use { source ->
             outFile.outputStream().use { sink -> source.copyTo(sink) }
         }

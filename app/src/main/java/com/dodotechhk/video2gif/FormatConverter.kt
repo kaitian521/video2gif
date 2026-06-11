@@ -68,7 +68,7 @@ object FormatConverter {
         onProgress: (Int) -> Unit = {},
         onResult: (Result) -> Unit,
     ): ConvertSession {
-        require(!format.isVideo) { "mp4 直出,无需转码" }
+        require(!format.isVideo) { "mp4 is direct output, no conversion needed" }
 
         val args = when (format) {
             ExportFormat.Gif -> {
@@ -116,7 +116,7 @@ object FormatConverter {
                         onResult(
                             Result.Error(
                                 "ffmpeg rc=${completed.returnCode}:" +
-                                    (completed.failStackTrace ?: completed.output ?: "未知错误")
+                                    (completed.failStackTrace ?: completed.output ?: "unknown error")
                                         .take(200)
                             )
                         )

@@ -130,10 +130,10 @@ fun PreviewScreen(
             if (uri != null) {
                 savedResult = uri to format
                 val dir = if (format.isVideo) "Movies" else "Pictures"
-                exportStatus = "已存到相册($dir/Video2gif,${format.label}):$detail"
+                exportStatus = "Saved to gallery ($dir/Video2gif, ${format.label}): $detail"
             } else {
-                exportStatus = "导出 OK($detail),但存相册失败"
-                toastFail("存相册失败")
+                exportStatus = "Export OK ($detail), but saving to gallery failed"
+                toastFail("Saving to gallery failed")
             }
         }
     }
@@ -146,7 +146,7 @@ fun PreviewScreen(
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(android.content.Intent.createChooser(send, "分享 ${format.label}"))
+        context.startActivity(android.content.Intent.createChooser(send, "Share ${format.label}"))
     }
 
     // 启动一次导出(P8+P9):Transformer 先出中间 mp4;mp4 直存,GIF/WebP 再跑 ffmpeg 转码。
@@ -158,31 +158,31 @@ fun PreviewScreen(
         ExportPrefs.save(context, state) // 记住本次选择,下次导入作为默认。
         val format = state.format
         val twoPhase = !format.isVideo
-        val phase1 = if (twoPhase) "1/2 转码 mp4" else "导出 mp4"
-        exportStatus = "$phase1…(勿切后台)"
+        val phase1 = if (twoPhase) "1/2 encoding mp4" else "Exporting mp4"
+        exportStatus = "$phase1… (keep app open)"
         val mp4File = File(context.cacheDir, "export_intermediate.mp4")
         exportSession = VideoExporter.export(
             context, state, mp4File,
-            onProgress = { p -> exportStatus = "$phase1 $p%…(勿切后台)" },
+            onProgress = { p -> exportStatus = "$phase1 $p%… (keep app open)" },
         ) { result ->
             exportSession = null
             when (result) {
                 is VideoExporter.Result.Success -> {
-                    val size = "${result.width}×${result.height},时长 ${result.durationMs} ms"
+                    val size = "${result.width}×${result.height}, ${result.durationMs} ms"
                     if (!twoPhase) {
-                        exportStatus = "导出 OK:$size,存相册中…"
+                        exportStatus = "Export OK: $size, saving to gallery…"
                         finishWithSave(mp4File, ExportFormat.Mp4, size)
                     } else {
                         // P9:对中间 mp4 跑 ffmpeg(fps+调色板/libwebp_anim,不 scale)。
                         // ffmpeg-kit 回调在后台线程,经 scope.launch 切回主线程更新 UI。
-                        exportStatus = "2/2 转码 ${format.label}…(勿切后台)"
+                        exportStatus = "2/2 converting to ${format.label}… (keep app open)"
                         val outFile = File(context.cacheDir, "export_out.${format.extension}")
                         convertSession = FormatConverter.convert(
                             mp4File, outFile, format, state.quality,
                             fps = state.maxFps,
                             expectedDurationMs = result.durationMs,
                             onProgress = { p ->
-                                scope.launch { exportStatus = "2/2 转码 ${format.label} $p%…(勿切后台)" }
+                                scope.launch { exportStatus = "2/2 converting to ${format.label} $p%… (keep app open)" }
                             },
                         ) { convResult ->
                             scope.launch {
@@ -190,19 +190,19 @@ fun PreviewScreen(
                                 mp4File.delete() // 中间 mp4 用完即清。
                                 when (convResult) {
                                     is FormatConverter.Result.Success -> {
-                                        exportStatus = "转码 OK:$size,存相册中…"
+                                        exportStatus = "Conversion OK: $size, saving to gallery…"
                                         finishWithSave(outFile, format, size)
                                     }
 
                                     is FormatConverter.Result.Error -> {
                                         exporting = false
-                                        exportStatus = "转码失败:${convResult.message}(残留已清理)"
-                                        toastFail("转码 ${format.label} 失败")
+                                        exportStatus = "Conversion failed: ${convResult.message} (leftovers cleaned)"
+                                        toastFail("${format.label} conversion failed")
                                     }
 
                                     FormatConverter.Result.Cancelled -> {
                                         exporting = false
-                                        exportStatus = "已取消(产物已清理)"
+                                        exportStatus = "Cancelled (output cleaned)"
                                     }
                                 }
                             }
@@ -212,13 +212,13 @@ fun PreviewScreen(
 
                 is VideoExporter.Result.Error -> {
                     exporting = false
-                    exportStatus = "导出失败:${result.message}(残留已清理)"
-                    toastFail("导出失败:${result.message}")
+                    exportStatus = "Export failed: ${result.message} (leftovers cleaned)"
+                    toastFail("Export failed: ${result.message}")
                 }
 
                 VideoExporter.Result.Cancelled -> {
                     exporting = false
-                    exportStatus = "已取消(产物已清理)"
+                    exportStatus = "Cancelled (output cleaned)"
                 }
             }
         }
@@ -234,9 +234,9 @@ fun PreviewScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("预览", style = MaterialTheme.typography.titleLarge)
+        Text("Preview", style = MaterialTheme.typography.titleLarge)
         Text(
-            "区间:${state.clipStartMs} … ${state.clipEndMs} ms(时长 $length ms)",
+            "Range: ${state.clipStartMs} … ${state.clipEndMs} ms (length $length ms)",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -375,7 +375,7 @@ fun PreviewScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val speedStyle = MaterialTheme.typography.bodyMedium
-            Text("速度", style = speedStyle)
+            Text("Speed", style = speedStyle)
             Slider(
                 value = state.speed,
                 onValueChange = { onStateChange(state.copy(speed = snapSpeed(it))) },
@@ -398,18 +398,18 @@ fun PreviewScreen(
         }
 
         Text(
-            "比例:${state.aspect.label} · 缩放:${"%.1f".format(state.scale)}× · " +
-                "速度:${formatSpeed(state.speed)}" +
-                (if (state.speed != 1f) " · 输出 ≈ ${(length / state.speed).toLong()} ms" else "") +
-                "(拖动移位,双指缩放,双击复位)",
+            "Aspect: ${state.aspect.label} · Zoom: ${"%.1f".format(state.scale)}× · " +
+                "Speed: ${formatSpeed(state.speed)}" +
+                (if (state.speed != 1f) " · output ≈ ${(length / state.speed).toLong()} ms" else "") +
+                " (drag to move, pinch to zoom, double-tap to reset)",
             style = MaterialTheme.typography.bodySmall,
         )
 
         // 底部操作:返回截取 / 打开导出面板。导出选项全部收进 ModalBottomSheet。
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = onBack) { Text("返回截取") }
+            OutlinedButton(onClick = onBack) { Text("Back") }
             Button(onClick = { showExportSheet = true }) {
-                Text(if (exporting) "导出中…" else "导出")
+                Text(if (exporting) "Exporting…" else "Export")
             }
         }
     }
@@ -426,7 +426,7 @@ fun PreviewScreen(
                     .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text("导出", style = MaterialTheme.typography.titleLarge)
+                Text("Export", style = MaterialTheme.typography.titleLarge)
 
                 // P9 格式:默认 GIF;mp4 直出,GIF/WebP 由 ffmpeg 对中间 mp4 转码。
                 Row(
@@ -434,7 +434,7 @@ fun PreviewScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("格式", style = MaterialTheme.typography.bodyMedium)
+                    Text("Format", style = MaterialTheme.typography.bodyMedium)
                     ExportFormat.values().forEach { f ->
                         FilterChip(
                             selected = state.format == f,
@@ -446,7 +446,7 @@ fun PreviewScreen(
                 }
 
                 // 分辨率(目标高度,px;宽按比例派生)= 像素尺寸唯一真值(Presentation.createForHeight)。
-                Text("分辨率", style = MaterialTheme.typography.bodyMedium)
+                Text("Resolution", style = MaterialTheme.typography.bodyMedium)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -469,7 +469,7 @@ fun PreviewScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("帧率", style = MaterialTheme.typography.bodyMedium)
+                    Text("Frame rate", style = MaterialTheme.typography.bodyMedium)
                     MAX_FPS_OPTIONS.forEach { fps ->
                         FilterChip(
                             selected = state.maxFps == fps,
@@ -486,7 +486,7 @@ fun PreviewScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("清晰度", style = MaterialTheme.typography.bodyMedium)
+                    Text("Quality", style = MaterialTheme.typography.bodyMedium)
                     ExportQuality.values().forEach { q ->
                         FilterChip(
                             selected = state.quality == q,
@@ -503,18 +503,18 @@ fun PreviewScreen(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(enabled = !exporting, onClick = { startExport() }) {
-                        Text(if (exporting) "导出中…" else "开始导出")
+                        Text(if (exporting) "Exporting…" else "Start export")
                     }
                     if (exporting) {
                         // 按当前阶段取消:阶段 1 中止 Transformer,阶段 2 中止 ffmpeg。
                         OutlinedButton(onClick = {
                             exportSession?.cancel()
                             convertSession?.cancel()
-                        }) { Text("取消") }
+                        }) { Text("Cancel") }
                     }
                     // P10:导出成功后可直接分享相册里的产物。
                     if (!exporting && savedResult != null) {
-                        OutlinedButton(onClick = { shareSaved() }) { Text("分享") }
+                        OutlinedButton(onClick = { shareSaved() }) { Text("Share") }
                     }
                 }
             }

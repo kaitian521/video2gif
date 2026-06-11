@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -76,7 +78,7 @@ fun ImportScreen(
                 }
 
                 is VideoImporter.Result.TooShort -> status = ImportStatus.Rejected(
-                    "视频太短(${result.durationMs} ms),需 > ${VideoImporter.MIN_DURATION_MS} ms"
+                    "Video too short (${result.durationMs} ms), needs > ${VideoImporter.MIN_DURATION_MS} ms"
                 )
 
                 is VideoImporter.Result.Error -> status = ImportStatus.Rejected(result.message)
@@ -91,22 +93,37 @@ fun ImportScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Button(
+        // 首页入口卡片:点击进相册选视频。
+        Card(
             onClick = {
                 picker.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                 )
             },
             enabled = status != ImportStatus.Loading,
+            elevation = CardDefaults.elevatedCardElevation(),
+            modifier = Modifier.fillMaxWidth(0.8f),
         ) {
-            Text("从相册选择视频")
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 48.dp, horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Video to Gif", style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    "Pick a video from your gallery",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         Spacer(Modifier.height(24.dp))
 
         when (val s = status) {
-            ImportStatus.Idle ->
-                Text("请选择一个 > ${VideoImporter.MIN_DURATION_MS}ms 的视频")
+            ImportStatus.Idle -> {}
 
             ImportStatus.Loading ->
                 CircularProgressIndicator()

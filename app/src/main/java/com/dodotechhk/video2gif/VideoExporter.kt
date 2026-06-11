@@ -74,7 +74,7 @@ object VideoExporter {
     ): ExportSession {
         val src = state.sourceLocalPath
         if (src == null) {
-            onResult(Result.Error("无本地源路径(sourceLocalPath 为空)"))
+            onResult(Result.Error("No local source path (sourceLocalPath is null)"))
             return ExportSession {}
         }
 
@@ -158,7 +158,7 @@ object VideoExporter {
                     finished = true
                     handler.removeCallbacks(pollProgress)
                     outFile.delete() // 失败清理残留(P8 步骤 6)。
-                    onResult(Result.Error(exportException.message ?: "导出失败"))
+                    onResult(Result.Error(exportException.message ?: "export failed"))
                 }
             })
             .build()

@@ -62,8 +62,8 @@ fun TrimScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("截取区间", style = MaterialTheme.typography.titleLarge)
-        Text("源时长:${state.durationMs} ms", style = MaterialTheme.typography.bodyMedium)
+        Text("Trim", style = MaterialTheme.typography.titleLarge)
+        Text("Source: ${state.durationMs} ms", style = MaterialTheme.typography.bodyMedium)
 
         // 视频预览:**高度固定**,宽度按源视频显示比例自适应,无黑边。
         // 盒子与视频宽高比严格一致 → PlayerView 默认 FIT 不产生 letterbox。
@@ -96,7 +96,7 @@ fun TrimScreen(
         }
 
         Text(
-            "区间:${state.clipStartMs} … ${state.clipEndMs} ms(时长 $length ms)",
+            "Range: ${state.clipStartMs} … ${state.clipEndMs} ms (length $length ms)",
             style = MaterialTheme.typography.titleMedium,
         )
 
@@ -149,22 +149,22 @@ fun TrimScreen(
         }
 
         Text(
-            "最短 ${ClipConstraints.MIN_CLIP_MS}ms;超过 ${ClipConstraints.MAX_CLIP_MS / 1000}s 可继续滑动,下一步会提示",
+            "Min ${ClipConstraints.MIN_CLIP_MS} ms; sliding past ${ClipConstraints.MAX_CLIP_MS / 1000} s is allowed, you'll be prompted at Next",
             style = MaterialTheme.typography.bodySmall,
         )
 
         if (!valid) {
-            Text("区间不合法", color = MaterialTheme.colorScheme.error)
+            Text("Invalid range", color = MaterialTheme.colorScheme.error)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = onBack) { Text("重新选择") }
+            OutlinedButton(onClick = onBack) { Text("Reselect") }
             Button(
                 onClick = {
                     // 超 10s 在此拦下并提示,不进预览;否则放行。
                     if (exceedsMaxClip(state.clipStartMs, state.clipEndMs)) {
                         Toast.makeText(
                             context,
-                            "最多选 ${ClipConstraints.MAX_CLIP_MS / 1000} 秒",
+                            "Max ${ClipConstraints.MAX_CLIP_MS / 1000} seconds",
                             Toast.LENGTH_SHORT,
                         ).show()
                     } else {
@@ -172,7 +172,7 @@ fun TrimScreen(
                     }
                 },
                 enabled = valid,
-            ) { Text("下一步(P3 预览)") }
+            ) { Text("Next") }
         }
     }
 }

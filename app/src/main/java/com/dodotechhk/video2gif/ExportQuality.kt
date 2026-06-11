@@ -10,7 +10,7 @@ package com.dodotechhk.video2gif
  * 档位定位:低 = 体积优先(可感知的妥协)、中 = 均衡、高 = 质量优先。
  */
 enum class ExportQuality(val label: String, val k: Float) {
-    Low("低", 0.03f),
-    Medium("中", 0.08f),
-    High("高", 0.2f),
+    Low("Low", 0.03f),
+    Medium("Medium", 0.08f),
+    High("High", 0.2f),
 }
