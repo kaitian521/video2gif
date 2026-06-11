@@ -19,9 +19,36 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // 签名(参考 RenaAI-Android 模式):jks 在仓库根目录,debug/release 同一签名,
+    // 便于覆盖安装与一键出包。
+    signingConfigs {
+        create("release") {
+            keyAlias = "video2gif_alias"
+            keyPassword = "video2gif_release"
+            storeFile = File(rootDir, "video2gif.jks")
+            storePassword = "video2gif_release"
+        }
+        getByName("debug") {
+            keyAlias = "video2gif_alias"
+            keyPassword = "video2gif_release"
+            storeFile = File(rootDir, "video2gif.jks")
+            storePassword = "video2gif_release"
+        }
+    }
+
     buildTypes {
-        release {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+        release {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

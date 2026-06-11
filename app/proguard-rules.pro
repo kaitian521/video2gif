@@ -1,21 +1,19 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# video2gif R8/ProGuard 规则(参考 RenaAI-Android 模式)。
+# Compose / AndroidX / Media3 各自带 consumer 规则,无需额外 keep;
+# 这里只处理:堆栈可读性、JNI、ffmpeg-kit。
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# 保留行号便于线上堆栈定位;隐藏原始文件名。
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# 类重打包到顶层,缩短名字、减小体积。
+-repackageclasses
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# JNI:native 方法按名字注册,本体与所在类名都不能动。
+-keepclasseswithmembernames class * { native <methods>; }
+
+# ffmpeg-kit(com.moizhassan.ffmpeg fork,Java 包名仍为 com.arthenica.*):
+# .so 经 JNI 按名字回调 Java 类/方法(FFmpegKitConfig、Session 回调、statistics 等),
+# AAR 不带 consumer 规则,必须整包 keep。
+-keep class com.arthenica.** { *; }
+-dontwarn com.arthenica.**
