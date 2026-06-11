@@ -92,8 +92,8 @@ object VideoExporter {
             .setRemoveAudio(true)
             // 与预览共用同一条视觉效果链 → WYSIWYG。
             .setEffects(Effects(emptyList(), buildVideoEffects(state)))
-            // 最大输出帧率:speed > 1 时帧时间戳被压缩,不设上限输出帧率会爆高(§5.4)。
-            .setFrameRate(state.quality.maxOutputFps)
+            // 最大输出帧率(用户五档选择):speed > 1 时帧时间戳被压缩,不设上限输出帧率会爆高(§5.4)。
+            .setFrameRate(state.maxFps)
             .apply {
                 // P7 变速:时间轴变换走 setSpeed(§5.4),绝不进 buildVideoEffects;
                 // 设了 setSpeed 后效果链里不允许再有改时间戳的 effect(当前没有)。
@@ -104,12 +104,12 @@ object VideoExporter {
             }
             .build()
 
-        // 三档码率 = k × 输出宽 × 输出高 × maxOutputFps(实施计划 P8 步骤 3)。
+        // 三档码率 = k × 输出宽 × 输出高 × maxFps(实施计划 P8 步骤 3;帧率为用户独立选择)。
         // 输出尺寸:高 = targetHeight,宽按裁后比例派生;编码器对齐(偶数等)由 encoder 兜底,
         // 码率估算不需要精确到对齐后的值。
         val outH = state.targetHeight
         val outW = (outH * state.outputAspectRatio).roundToInt()
-        val bitrate = (state.quality.k * outW * outH * state.quality.maxOutputFps).roundToInt()
+        val bitrate = (state.quality.k * outW * outH * state.maxFps).roundToInt()
 
         val handler = Handler(Looper.getMainLooper())
         val progressHolder = ProgressHolder()

@@ -65,6 +65,9 @@ private const val MAX_SCALE = 8f
 /** 可选输出分辨率(目标高度,px;宽按比例派生)。技术方案 §导出参数。 */
 private val RESOLUTION_HEIGHTS = listOf(240, 360, 480, 540, 720, 1080)
 
+/** 可选最大输出帧率(mp4 setFrameRate 上限 / GIF·WebP fps 滤镜)。 */
+private val MAX_FPS_OPTIONS = listOf(10, 15, 20, 25, 30)
+
 /** P7 变速范围(>0,下限远离 0 避免输出时长/体积爆炸,§5.4)。 */
 private const val SPEED_MIN = 0.5f
 private const val SPEED_MAX = 2f
@@ -168,6 +171,7 @@ fun PreviewScreen(
                         val outFile = File(context.cacheDir, "export_out.${format.extension}")
                         convertSession = FormatConverter.convert(
                             mp4File, outFile, format, state.quality,
+                            fps = state.maxFps,
                             expectedDurationMs = result.durationMs,
                             onProgress = { p ->
                                 scope.launch { exportStatus = "2/2 转码 ${format.label} $p%…(勿切后台)" }
@@ -449,7 +453,24 @@ fun PreviewScreen(
                     }
                 }
 
-                // 清晰度三档(码率 = k×W×H×fps + 最大输出帧率;数值待 P11 标定)。
+                // 最大帧率五档:mp4 setFrameRate 上限 / GIF·WebP fps 滤镜(与清晰度解耦)。
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("帧率", style = MaterialTheme.typography.bodyMedium)
+                    MAX_FPS_OPTIONS.forEach { fps ->
+                        FilterChip(
+                            selected = state.maxFps == fps,
+                            enabled = !exporting,
+                            onClick = { onStateChange(state.copy(maxFps = fps)) },
+                            label = { Text("$fps") },
+                        )
+                    }
+                }
+
+                // 清晰度三档(mp4 码率 k×W×H×maxFps / GIF 颜色抖动 / WebP q;§10.2 已标定)。
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,

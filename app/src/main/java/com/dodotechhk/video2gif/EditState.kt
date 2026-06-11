@@ -55,8 +55,13 @@ data class EditState(
      * 输出时长 = 选取时长 ÷ speed;成品最小时长语义(÷speed ≥ 500ms)待 §10.6 定稿。
      */
     val speed: Float = 1f,
-    /** P8 清晰度档位:决定导出码率(k×W×H×fps)与最大输出帧率;**不影响像素几何**。 */
+    /** P8 清晰度档位:决定 mp4 码率(k×W×H×maxFps)/GIF 颜色抖动/WebP q;**不影响像素几何与帧率**。 */
     val quality: ExportQuality = ExportQuality.Medium,
+    /**
+     * 最大输出帧率(UI 五档 10/15/20/25/30):mp4 `setFrameRate` 上限(speed>1 防爆高,§5.4),
+     * GIF/WebP 的 `fps` 滤镜直接用它。默认 15(GIF 工具的均衡值)。
+     */
+    val maxFps: Int = 15,
     /** P9 导出格式:默认 GIF;mp4 直出,GIF/WebP 对中间 mp4 二次转码([FormatConverter])。 */
     val format: ExportFormat = ExportFormat.Gif,
 ) {

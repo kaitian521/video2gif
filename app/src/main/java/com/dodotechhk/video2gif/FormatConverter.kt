@@ -15,13 +15,13 @@ import java.io.File
  * - `executeWithArgumentsAsync`:**参数数组、不带 `ffmpeg` 前缀**,自带后台线程;
  * - 进度:statistics 回调的已处理时间 ÷ 预期输出时长。
  *
- * 三档参数(技术方案 §10.2 表,待 P11 标定):
+ * 三档参数(§10.2,2026-06 标定;**fps 不在档内**,由 [EditState.maxFps] 独立控制):
  *
- * | 档 | fps | max_colors | dither       | webp q |
- * |----|-----|------------|--------------|--------|
- * | 低 | 8   | 128        | none(非 off)| 50     |
- * | 中 | 12  | 256        | bayer        | 75     |
- * | 高 | 15  | 256        | sierra2_4a   | 90     |
+ * | 档 | max_colors | dither       | webp q |
+ * |----|------------|--------------|--------|
+ * | 低 | 64         | none(非 off)| 50     |
+ * | 中 | 256        | bayer        | 75     |
+ * | 高 | 256        | sierra2_4a   | 90     |
  */
 object FormatConverter {
 
@@ -37,25 +37,25 @@ object FormatConverter {
         fun cancel() = FFmpegKit.cancel(session.sessionId)
     }
 
-    private data class GifTier(val fps: Int, val maxColors: Int, val dither: String)
-    private data class WebpTier(val fps: Int, val q: Int)
+    private data class GifTier(val maxColors: Int, val dither: String)
 
     private fun gifTier(quality: ExportQuality) = when (quality) {
-        ExportQuality.Low -> GifTier(8, 128, "none")
-        ExportQuality.Medium -> GifTier(12, 256, "bayer")
-        ExportQuality.High -> GifTier(15, 256, "sierra2_4a")
+        ExportQuality.Low -> GifTier(64, "none")
+        ExportQuality.Medium -> GifTier(256, "bayer")
+        ExportQuality.High -> GifTier(256, "sierra2_4a")
     }
 
-    private fun webpTier(quality: ExportQuality) = when (quality) {
-        ExportQuality.Low -> WebpTier(8, 50)
-        ExportQuality.Medium -> WebpTier(12, 75)
-        ExportQuality.High -> WebpTier(15, 90)
+    private fun webpQ(quality: ExportQuality) = when (quality) {
+        ExportQuality.Low -> 50
+        ExportQuality.Medium -> 75
+        ExportQuality.High -> 90
     }
 
     /**
      * 把 [mp4File] 转成 [format](GIF/WebP;mp4 不需要转码,调用方不该传进来)。
      * 回调线程为 ffmpeg-kit 的回调线程,**调用方负责切回主线程**更新 UI。
      *
+     * @param fps 输出帧率([EditState.maxFps],用户五档选择)。
      * @param expectedDurationMs 预期输出时长(= 选取时长 ÷ speed),用于 statistics 进度换算。
      */
     fun convert(
@@ -63,6 +63,7 @@ object FormatConverter {
         outFile: File,
         format: ExportFormat,
         quality: ExportQuality,
+        fps: Int,
         expectedDurationMs: Long,
         onProgress: (Int) -> Unit = {},
         onResult: (Result) -> Unit,
@@ -75,7 +76,7 @@ object FormatConverter {
                 arrayOf(
                     "-i", mp4File.absolutePath,
                     "-filter_complex",
-                    "fps=${t.fps},split[s0][s1];" +
+                    "fps=$fps,split[s0][s1];" +
                         "[s0]palettegen=max_colors=${t.maxColors}:stats_mode=diff[p];" +
                         "[s1][p]paletteuse=dither=${t.dither}",
                     "-y", outFile.absolutePath,
@@ -83,13 +84,12 @@ object FormatConverter {
             }
 
             ExportFormat.WebP -> {
-                val t = webpTier(quality)
                 arrayOf(
                     "-i", mp4File.absolutePath,
-                    "-vf", "fps=${t.fps}",
+                    "-vf", "fps=$fps",
                     "-c:v", "libwebp_anim",
                     "-lossless", "0",
-                    "-q:v", "${t.q}",
+                    "-q:v", "${webpQ(quality)}",
                     "-loop", "0",
                     "-an",
                     "-y", outFile.absolutePath,
