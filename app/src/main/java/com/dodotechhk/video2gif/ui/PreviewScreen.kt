@@ -21,6 +21,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -116,9 +118,11 @@ fun PreviewScreen(
     var savedResult by remember(state.sourceUri) {
         mutableStateOf<Pair<android.net.Uri, ExportFormat>?>(null)
     }
+    // 导出成功对话框(面板收起后弹出,提供分享入口)。
+    var showSuccessDialog by remember(state.sourceUri) { mutableStateOf(false) }
 
-    // 失败提示:面板可能已被关掉,exportStatus 看不到 → Toast 兜底。
-    val toastFail: (String) -> Unit = { msg ->
+    // 结果提示:成功/失败都 Toast(面板已收起或被关掉时也能看到)。
+    val toast: (String) -> Unit = { msg ->
         android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
     }
 
@@ -129,13 +133,16 @@ fun PreviewScreen(
             // 中间产物/已复制完的 cache 文件都清掉(P10:不留残留)。
             file.delete()
             exporting = false
+            // 终态:收起面板,Toast 报结果(成功产物仍可重开面板分享)。
+            showExportSheet = false
             if (uri != null) {
                 savedResult = uri to format
                 val dir = if (format.isVideo) "Movies" else "Pictures"
                 exportStatus = "Saved to gallery ($dir/Video2gif, ${format.label}): $detail"
+                showSuccessDialog = true
             } else {
                 exportStatus = "Export OK ($detail), but saving to gallery failed"
-                toastFail("Saving to gallery failed")
+                toast("Export failed: saving to gallery failed")
             }
         }
     }
@@ -198,8 +205,9 @@ fun PreviewScreen(
 
                                     is FormatConverter.Result.Error -> {
                                         exporting = false
+                                        showExportSheet = false
                                         exportStatus = "Conversion failed: ${convResult.message} (leftovers cleaned)"
-                                        toastFail("${format.label} conversion failed")
+                                        toast("Export failed: ${format.label} conversion error")
                                     }
 
                                     FormatConverter.Result.Cancelled -> {
@@ -214,8 +222,9 @@ fun PreviewScreen(
 
                 is VideoExporter.Result.Error -> {
                     exporting = false
+                    showExportSheet = false
                     exportStatus = "Export failed: ${result.message} (leftovers cleaned)"
-                    toastFail("Export failed: ${result.message}")
+                    toast("Export failed: ${result.message}")
                 }
 
                 VideoExporter.Result.Cancelled -> {
@@ -435,7 +444,8 @@ fun PreviewScreen(
     if (showExportSheet) {
         ModalBottomSheet(
             onDismissRequest = { showExportSheet = false },
-            sheetState = rememberModalBottomSheetState(),
+            // 打开即完全展开,跳过半展开档。
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
             Column(
                 modifier = Modifier
@@ -443,15 +453,24 @@ fun PreviewScreen(
                     .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text("Export", style = MaterialTheme.typography.titleLarge)
+                Text("Export Options", style = MaterialTheme.typography.titleLarge)
+
+                // 统一的「标题在上、选项在下」分组:标题用 titleSmall 突出层次。
+                @Composable
+                fun OptionSection(title: String, chips: @Composable () -> Unit) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(title, style = MaterialTheme.typography.titleSmall)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) { chips() }
+                    }
+                }
 
                 // P9 格式:默认 GIF;mp4 直出,GIF/WebP 由 ffmpeg 对中间 mp4 转码。
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Format", style = MaterialTheme.typography.bodyMedium)
+                OptionSection("Format") {
                     ExportFormat.values().forEach { f ->
                         FilterChip(
                             selected = state.format == f,
@@ -463,13 +482,7 @@ fun PreviewScreen(
                 }
 
                 // 分辨率(目标高度,px;宽按比例派生)= 像素尺寸唯一真值(Presentation.createForHeight)。
-                Text("Resolution", style = MaterialTheme.typography.bodyMedium)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                OptionSection("Resolution") {
                     RESOLUTION_HEIGHTS.forEach { h ->
                         FilterChip(
                             selected = state.targetHeight == h,
@@ -481,14 +494,7 @@ fun PreviewScreen(
                 }
 
                 // 最大帧率五档:mp4 setFrameRate 上限 / GIF·WebP fps 滤镜(与清晰度解耦)。
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Frame rate", style = MaterialTheme.typography.bodyMedium)
+                OptionSection("Frame rate") {
                     MAX_FPS_OPTIONS.forEach { fps ->
                         FilterChip(
                             selected = state.maxFps == fps,
@@ -499,15 +505,8 @@ fun PreviewScreen(
                     }
                 }
 
-                // 清晰度三档(mp4 码率 k×W×H×maxFps / GIF 颜色抖动 / WebP q;§10.2 已标定)。
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Quality", style = MaterialTheme.typography.bodyMedium)
+                // 清晰度五档(mp4 码率 k×W×H×maxFps / GIF 颜色抖动 / WebP q;§10.2 已标定)。
+                OptionSection("Quality") {
                     ExportQuality.values().forEach { q ->
                         FilterChip(
                             selected = state.quality == q,
@@ -522,23 +521,64 @@ fun PreviewScreen(
                     Text(exportStatus, style = MaterialTheme.typography.bodyMedium)
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(enabled = !exporting, onClick = { startExport() }) {
-                        Text(if (exporting) "Exporting…" else "Start export")
-                    }
-                    if (exporting) {
-                        // 按当前阶段取消:阶段 1 中止 Transformer,阶段 2 中止 ffmpeg。
-                        OutlinedButton(onClick = {
+                // 主按钮通栏:距屏幕左右各 40dp(面板 24dp + 此处 16dp)。
+                Button(
+                    enabled = !exporting,
+                    onClick = { startExport() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                ) {
+                    Text(if (exporting) "Exporting…" else "Start Export")
+                }
+                if (exporting) {
+                    // 按当前阶段取消:阶段 1 中止 Transformer,阶段 2 中止 ffmpeg。
+                    OutlinedButton(
+                        onClick = {
                             exportSession?.cancel()
                             convertSession?.cancel()
-                        }) { Text("Cancel") }
-                    }
-                    // P10:导出成功后可直接分享相册里的产物。
-                    if (!exporting && savedResult != null) {
-                        OutlinedButton(onClick = { shareSaved() }) { Text("Share") }
-                    }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                    ) { Text("Cancel") }
+                }
+                // P10:导出成功后可直接分享相册里的产物。
+                if (!exporting && savedResult != null) {
+                    OutlinedButton(
+                        onClick = { shareSaved() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                    ) { Text("Share") }
                 }
             }
         }
+    }
+
+    // 导出成功对话框:标题右侧关闭按钮,正文提示已存相册,主操作为分享。
+    if (showSuccessDialog) {
+        val savedDir = if (savedResult?.second?.isVideo == true) "Movies" else "Pictures"
+        AlertDialog(
+            onDismissRequest = { showSuccessDialog = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Export Success", modifier = Modifier.weight(1f))
+                    IconButton(onClick = { showSuccessDialog = false }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close")
+                    }
+                }
+            },
+            text = { Text("Saved to gallery ($savedDir/Video2gif). You can share it now.") },
+            confirmButton = {
+                Button(onClick = {
+                    showSuccessDialog = false
+                    shareSaved()
+                }) { Text("Share") }
+            },
+        )
     }
 }
