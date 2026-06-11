@@ -18,9 +18,13 @@ import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -231,14 +235,23 @@ fun PreviewScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Preview", style = MaterialTheme.typography.titleLarge)
-        Text(
-            "Range: ${state.clipStartMs} … ${state.clipEndMs} ms (length $length ms)",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        // 顶栏:返回(图标,与截取页一致)| 标题。
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            }
+            Text(
+                "Preview",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
+        }
 
         // 预览:无取景框,裁切窗口(外框)**严格等于所选比例**。
         // 尺寸规则:outAR ≤ 9/15 → 定高(占满可用高),宽自适应;否则定宽(占满可用宽),高自适应。
@@ -405,9 +418,8 @@ fun PreviewScreen(
             style = MaterialTheme.typography.bodySmall,
         )
 
-        // 底部操作:返回截取 / 打开导出面板。导出选项全部收进 ModalBottomSheet。
+        // 底部操作:打开导出面板(返回已上移到顶栏图标)。导出选项全部收进 ModalBottomSheet。
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = onBack) { Text("Back") }
             Button(onClick = { showExportSheet = true }) {
                 Text(if (exporting) "Exporting…" else "Export")
             }

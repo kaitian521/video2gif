@@ -15,6 +15,8 @@ coroutines = "1.9.0"
 # ffmpeg-kit 社区 fork(官方已退休):16KB page 对齐变体,LGPLv3(P9 / 技术方案 §5.2、§8)。
 # 锁具体版本;源码 https://github.com/moizhassankh/ffmpeg-kit-android-16KB(含 libwebp/libwebp_anim,已验)。
 ffmpegKit = "6.1.1"
+# material-icons 已停更于 1.7.x(不随 BOM),锁定终版;只用 core(ArrowBack 等基础图标)。
+composeIcons = "1.7.8"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,6 +40,7 @@ androidx-media3-common = { group = "androidx.media3", name = "media3-common", ve
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 ffmpeg-kit = { group = "com.moizhassan.ffmpeg", name = "ffmpeg-kit-16kb", version.ref = "ffmpegKit" }
+androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core", version.ref = "composeIcons" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
