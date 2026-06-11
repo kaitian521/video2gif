@@ -15,13 +15,15 @@ import java.io.File
  * - `executeWithArgumentsAsync`:**参数数组、不带 `ffmpeg` 前缀**,自带后台线程;
  * - 进度:statistics 回调的已处理时间 ÷ 预期输出时长。
  *
- * 三档参数(§10.2,2026-06 标定;**fps 不在档内**,由 [EditState.maxFps] 独立控制):
+ * 档位参数(§10.2,2026-06 标定;**fps 不在档内**,由 [EditState.maxFps] 独立控制):
  *
- * | 档 | max_colors | dither       | webp q |
- * |----|------------|--------------|--------|
- * | 低 | 64         | none(非 off)| 50     |
- * | 中 | 256        | bayer        | 75     |
- * | 高 | 256        | sierra2_4a   | 90     |
+ * | 档   | max_colors | dither       | 调色板         | webp q |
+ * |------|------------|--------------|----------------|--------|
+ * | 低   | 64         | none(非 off)| 全片一张(diff)| 50     |
+ * | 中   | 256        | bayer        | 全片一张(diff)| 75     |
+ * | 高   | 256        | sierra2_4a   | 全片一张(diff)| 90     |
+ * | 超高 | 256        | sierra2_4a   | **逐帧**(single + paletteuse new=1) | 95 |
+ * | Max  | 256        | sierra3(全 sierra,最重)| **逐帧** | 100 |
  */
 object FormatConverter {
 
@@ -37,18 +39,24 @@ object FormatConverter {
         fun cancel() = FFmpegKit.cancel(session.sessionId)
     }
 
-    private data class GifTier(val maxColors: Int, val dither: String)
+    private data class GifTier(val maxColors: Int, val dither: String, val perFramePalette: Boolean)
 
     private fun gifTier(quality: ExportQuality) = when (quality) {
-        ExportQuality.Low -> GifTier(64, "none")
-        ExportQuality.Medium -> GifTier(256, "bayer")
-        ExportQuality.High -> GifTier(256, "sierra2_4a")
+        ExportQuality.Low -> GifTier(64, "none", perFramePalette = false)
+        ExportQuality.Medium -> GifTier(256, "bayer", perFramePalette = false)
+        ExportQuality.High -> GifTier(256, "sierra2_4a", perFramePalette = false)
+        // 超高/Max:逐帧调色板(stats_mode=single + paletteuse new=1),体积显著增大;
+        // Max 再换最重的全 sierra 抖动。
+        ExportQuality.ExtraHigh -> GifTier(256, "sierra2_4a", perFramePalette = true)
+        ExportQuality.Max -> GifTier(256, "sierra3", perFramePalette = true)
     }
 
     private fun webpQ(quality: ExportQuality) = when (quality) {
         ExportQuality.Low -> 50
         ExportQuality.Medium -> 75
         ExportQuality.High -> 90
+        ExportQuality.ExtraHigh -> 95
+        ExportQuality.Max -> 100
     }
 
     /**
@@ -73,12 +81,14 @@ object FormatConverter {
         val args = when (format) {
             ExportFormat.Gif -> {
                 val t = gifTier(quality)
+                val statsMode = if (t.perFramePalette) "single" else "diff"
+                val use = "paletteuse=dither=${t.dither}" + if (t.perFramePalette) ":new=1" else ""
                 arrayOf(
                     "-i", mp4File.absolutePath,
                     "-filter_complex",
                     "fps=$fps,split[s0][s1];" +
-                        "[s0]palettegen=max_colors=${t.maxColors}:stats_mode=diff[p];" +
-                        "[s1][p]paletteuse=dither=${t.dither}",
+                        "[s0]palettegen=max_colors=${t.maxColors}:stats_mode=$statsMode[p];" +
+                        "[s1][p]$use",
                     "-y", outFile.absolutePath,
                 )
             }

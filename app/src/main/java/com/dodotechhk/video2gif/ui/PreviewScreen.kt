@@ -465,7 +465,9 @@ fun PreviewScreen(
 
                 // 最大帧率五档:mp4 setFrameRate 上限 / GIF·WebP fps 滤镜(与清晰度解耦)。
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -482,7 +484,9 @@ fun PreviewScreen(
 
                 // 清晰度三档(mp4 码率 k×W×H×maxFps / GIF 颜色抖动 / WebP q;§10.2 已标定)。
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {

@@ -7,10 +7,13 @@ package com.dodotechhk.video2gif
  * - mp4 码率 = [k] × 输出宽 × 输出高 × maxFps;
  * - GIF 颜色数/抖动、WebP q 的三档映射在 [FormatConverter]。
  *
- * 档位定位:低 = 体积优先(可感知的妥协)、中 = 均衡、高 = 质量优先。
+ * 档位定位:低 = 体积优先(可感知的妥协)、中 = 均衡、高 = 质量优先、
+ * 超高 = 逐帧调色板(体积显著增大)、Max = 不计体积的质量天花板。
  */
 enum class ExportQuality(val label: String, val k: Float) {
-    Low("Low", 0.03f),
-    Medium("Medium", 0.08f),
-    High("High", 0.2f),
+    Low("Low", 0.06f),
+    Medium("Medium", 0.16f),
+    High("High", 0.4f),
+    ExtraHigh("Extra High", 0.8f),
+    Max("Max", 1.6f),
 }
