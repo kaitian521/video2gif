@@ -1,6 +1,8 @@
 package com.dodotechhk.video2gif
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -22,5 +24,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        // 应用内评分:启动 5 秒后按条件尝试(装机 ≥7 天 + 距上次 ≥15 天,见 AppReviewGate;
+        // 触发时机与参考项目 ComplexMusic 一致)。
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (!isFinishing) AppReviewGate.maybeAskForReview(this)
+        }, 5000)
     }
 }

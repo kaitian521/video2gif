@@ -17,6 +17,8 @@ coroutines = "1.9.0"
 ffmpegKit = "6.1.1"
 # material-icons 已停更于 1.7.x(不随 BOM),锁定终版;只用 core(ArrowBack 等基础图标)。
 composeIcons = "1.7.8"
+# Google Play In-App Review(评分弹窗,参考 ComplexMusic 同版本)。
+playAppReview = "2.0.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -41,6 +43,7 @@ androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.re
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 ffmpeg-kit = { group = "com.moizhassan.ffmpeg", name = "ffmpeg-kit-16kb", version.ref = "ffmpegKit" }
 androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core", version.ref = "composeIcons" }
+play-app-review-ktx = { module = "com.google.android.play:review-ktx", version.ref = "playAppReview" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

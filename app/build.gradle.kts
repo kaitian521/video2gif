@@ -108,6 +108,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     // P9 GIF/WebP 转码:ffmpeg-kit 社区 fork(16KB 对齐,LGPLv3;带 .so,见技术方案 §5.2/§8)
     implementation(libs.ffmpeg.kit)
+    // Google Play In-App Review 评分弹窗(参考 ComplexMusic)
+    implementation(libs.play.app.review.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
