@@ -1,15 +1,10 @@
 package com.dodotechhk.video2gif.ui
 
 import android.content.Intent
-import android.graphics.BitmapFactory
-import android.graphics.ImageDecoder
-import android.graphics.drawable.AnimatedImageDrawable
-import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import android.text.format.DateFormat
-import android.widget.ImageView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,17 +24,18 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -58,13 +54,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import com.dodotechhk.video2gif.ExportFormat
 import com.dodotechhk.video2gif.R
 import com.dodotechhk.video2gif.works.ExportRecord
@@ -105,24 +95,8 @@ fun CreationScreen(
     }
 
     Column(modifier.fillMaxSize()) {
-        // 标题栏:与导入页一致(左标题 + 右设置齿轮)。
-        Box(Modifier.fillMaxWidth()) {
-            Text(
-                stringResource(R.string.tab_creation),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-            )
-            IconButton(
-                onClick = onSettings,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-            ) {
-                Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings))
-            }
-        }
+        // 标题栏:与导入页共用 HomeHeader。
+        HomeHeader(title = stringResource(R.string.tab_creation), onSettings = onSettings)
 
         if (records.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -152,9 +126,15 @@ fun CreationScreen(
         }
     }
 
-    // 应用内播放弹窗:mp4 走 ExoPlayer,GIF/WebP 走 ImageDecoder 动图。
+    // 应用内播放弹窗:mp4 走 ExoPlayer,GIF/WebP 走 ImageDecoder 动图;
+    // 底部直接提供分享/删除,不必关弹窗回网格找按钮。
     playing?.let { rec ->
-        PlaybackDialog(record = rec, onDismiss = { playing = null })
+        PlaybackDialog(
+            record = rec,
+            onShare = { shareRecord(context, rec) },
+            onDelete = { playing = null; pendingDelete = rec },
+            onDismiss = { playing = null },
+        )
     }
 
     // 删除二次确认:删相册文件 + 删索引。
@@ -183,114 +163,87 @@ fun CreationScreen(
 private fun mimeOf(rec: ExportRecord): String =
     runCatching { ExportFormat.valueOf(rec.format).mimeType }.getOrDefault("image/*")
 
+/** 时长 → "m:ss"(四舍五入到秒)。 */
+private fun formatDuration(ms: Long): String {
+    val totalSec = (ms + 500) / 1000
+    return "%d:%02d".format(totalSec / 60, totalSec % 60)
+}
+
+/** 字节数 → "1.2 MB" / "350 KB"。 */
+private fun formatBytes(bytes: Long): String =
+    if (bytes >= 1 shl 20) "%.1f MB".format(bytes / 1048576f)
+    else "%d KB".format((bytes + 512) / 1024)
+
 /**
- * 作品播放弹窗:按格式选播放器循环播放。
- * - Mp4:ExoPlayer(REPEAT_MODE_ALL,静音与导出无音轨一致)。
- * - Gif/WebP:ImageDecoder 解出 AnimatedImageDrawable 无限循环(API 28+;
- *   低版本回退静态首帧,minSdk 24)。
+ * 作品播放弹窗:[MediaPlayback] 循环播放,底部一排分享/删除操作
+ * (删除走外部的二次确认流程)。
  */
 @Composable
-private fun PlaybackDialog(record: ExportRecord, onDismiss: () -> Unit) {
+private fun PlaybackDialog(
+    record: ExportRecord,
+    onShare: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     val isVideo = runCatching { ExportFormat.valueOf(record.format).isVideo }.getOrDefault(false)
     val ratio =
         if (record.width > 0 && record.height > 0) record.width.toFloat() / record.height else 1f
 
     Dialog(onDismissRequest = onDismiss) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color.Black),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(ratio),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (isVideo) VideoPlayback(record) else AnimatedImagePlayback(record)
-            }
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp),
-            ) {
-                Icon(
-                    Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.close),
-                    tint = Color.White,
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Box(
                     modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
-                        .padding(4.dp),
-                )
-            }
-        }
-    }
-}
-
-/** mp4 播放:循环、静音、无控制条,随弹窗关闭释放。 */
-@Composable
-private fun VideoPlayback(record: ExportRecord) {
-    val context = LocalContext.current
-    val player = remember(record.uri) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(record.uri))
-            repeatMode = Player.REPEAT_MODE_ALL
-            volume = 0f
-            playWhenReady = true
-            prepare()
-        }
-    }
-    DisposableEffect(player) {
-        onDispose { player.release() }
-    }
-    AndroidView(
-        factory = { ctx ->
-            PlayerView(ctx).apply {
-                useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            }
-        },
-        update = { it.player = player },
-        modifier = Modifier.fillMaxSize(),
-    )
-}
-
-/** GIF/WebP 播放:AnimatedImageDrawable 无限循环;API < 28 显示静态首帧。 */
-@Composable
-private fun AnimatedImagePlayback(record: ExportRecord) {
-    val context = LocalContext.current
-    val drawable by produceState<Drawable?>(null, record.uri) {
-        value = withContext(Dispatchers.IO) {
-            runCatching {
-                val uri = Uri.parse(record.uri)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    ImageDecoder.decodeDrawable(
-                        ImageDecoder.createSource(context.contentResolver, uri)
-                    )
-                } else {
-                    context.contentResolver.openInputStream(uri)?.use {
-                        BitmapDrawable(context.resources, BitmapFactory.decodeStream(it))
-                    }
+                        .fillMaxWidth()
+                        .aspectRatio(ratio),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    MediaPlayback(record.uri, isVideo, Modifier.fillMaxSize())
                 }
-            }.getOrNull()
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.close),
+                        tint = Color.White,
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+                            .padding(4.dp),
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                TextButton(
+                    onClick = onShare,
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text(stringResource(R.string.share))
+                }
+                TextButton(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                ) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text(stringResource(R.string.delete))
+                }
+            }
         }
     }
-    AndroidView(
-        factory = { ctx ->
-            ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
-        },
-        update = { view ->
-            view.setImageDrawable(drawable)
-            val d = drawable
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && d is AnimatedImageDrawable) {
-                d.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
-                d.start()
-            }
-        },
-        modifier = Modifier.fillMaxSize(),
-    )
 }
 
 private fun shareRecord(context: android.content.Context, rec: ExportRecord) {
@@ -327,6 +280,16 @@ private fun WorkItem(
             }.getOrNull()
         }
     }
+    // 文件大小(MediaStore OpenableColumns.SIZE;查不到则不显示)。
+    val sizeBytes by produceState<Long?>(null, record.uri) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.query(
+                    Uri.parse(record.uri), arrayOf(OpenableColumns.SIZE), null, null, null,
+                )?.use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null }
+            }.getOrNull()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -356,6 +319,20 @@ private fun WorkItem(
                 color = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+            // 时长 · 文件大小角标(大小异步加载,查到前只显示时长)。
+            Text(
+                listOfNotNull(
+                    formatDuration(record.durationMs),
+                    sizeBytes?.let { formatBytes(it) },
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
                     .padding(6.dp)
                     .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
                     .padding(horizontal = 6.dp, vertical = 2.dp),

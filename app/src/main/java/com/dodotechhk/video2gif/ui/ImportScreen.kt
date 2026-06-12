@@ -12,13 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -105,23 +101,12 @@ fun ImportScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        // 标题栏:显示 app 名(string 资源,与 launcher 一致)。
-        Text(
-            stringResource(R.string.home_header),
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+        // 标题栏:app 名 + 设置入口(与作品页共用 HomeHeader)。
+        HomeHeader(
+            title = stringResource(R.string.home_header),
+            onSettings = onSettings,
+            modifier = Modifier.align(Alignment.TopCenter),
         )
-        // 设置入口:右上角齿轮 → 设置页(隐私协议/版本号/联系我们)。
-        IconButton(
-            onClick = onSettings,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-        ) {
-            Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings))
-        }
 
         Column(
             modifier = Modifier

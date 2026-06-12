@@ -12,6 +12,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
@@ -171,6 +172,8 @@ fun PreviewScreen(
     var savedResult by remember(state.sourceUri) {
         mutableStateOf<Pair<android.net.Uri, ExportFormat>?>(null)
     }
+    // 产物像素尺寸(宽×高):成功弹窗内预览的宽高比。
+    var savedDims by remember(state.sourceUri) { mutableStateOf<Pair<Int, Int>?>(null) }
     // 导出成功对话框(面板收起后弹出,提供分享入口)。
     var showSuccessDialog by remember(state.sourceUri) { mutableStateOf(false) }
     // 本次预览是否成功导出过:决定返回时要不要二次确认。
@@ -207,6 +210,7 @@ fun PreviewScreen(
             if (uri != null) {
                 hasExported = true
                 savedResult = uri to format
+                savedDims = outW to outH
                 // 作品记录入库(产物本体在相册,这里只存索引)。
                 WorksDatabase.get(context).dao().insert(
                     ExportRecord(
@@ -1206,7 +1210,40 @@ fun PreviewScreen(
                     }
                 }
             },
-            text = { Text(stringResource(R.string.export_saved_dialog, savedDir)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // 产物预览:循环播放刚导出的文件(所见即所得的最终确认)。
+                    // 竖版定高、横版定宽,避免高比例产物把弹窗撑出屏幕。
+                    savedResult?.let { (uri, format) ->
+                        val dims = savedDims
+                        val ratio =
+                            if (dims != null && dims.first > 0 && dims.second > 0)
+                                dims.first.toFloat() / dims.second
+                            else 1f
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                modifier = (
+                                    if (ratio < 1f) Modifier.height(280.dp)
+                                    else Modifier.fillMaxWidth()
+                                )
+                                    .aspectRatio(ratio)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.Black),
+                            ) {
+                                MediaPlayback(
+                                    uri.toString(),
+                                    format.isVideo,
+                                    Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                    Text(stringResource(R.string.export_saved_dialog, savedDir))
+                }
+            },
             confirmButton = {
                 Button(onClick = {
                     showSuccessDialog = false
