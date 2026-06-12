@@ -1,5 +1,9 @@
 package com.dodotechhk.video2gif.ui
 
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,6 +11,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -25,14 +30,23 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.widget.Toast
 import androidx.compose.ui.res.stringResource
 import com.dodotechhk.video2gif.ClipConstraints
@@ -46,6 +60,38 @@ import com.dodotechhk.video2gif.ui.theme.TrimHandle
 
 /** 毫秒 → 一位小数的秒("12.3s"),给所有时间文案统一观感。 */
 private fun fmtSec(ms: Long): String = "%.1fs".format(ms / 1000f)
+
+/** P12 缩略图时间轴:抽帧数量(均匀取各分段中点)。 */
+private const val THUMB_COUNT = 8
+
+/** P12 缩略图时间轴:缩略条高度。 */
+private val THUMB_STRIP_HEIGHT = 48.dp
+
+/** 在 IO 线程均匀抽 [THUMB_COUNT] 帧并缩到条带高,原图立即回收(控峰值内存)。 */
+private suspend fun loadThumbnails(path: String, durationMs: Long): List<ImageBitmap> =
+    withContext(Dispatchers.IO) {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(path)
+            val durUs = durationMs * 1000
+            (0 until THUMB_COUNT).mapNotNull { i ->
+                // 各分段中点,OPTION_CLOSEST_SYNC 取最近关键帧(快;时间轴示意不需逐帧精确)。
+                val tUs = durUs * (2L * i + 1) / (2L * THUMB_COUNT)
+                retriever.getFrameAtTime(tUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    ?.let { full ->
+                        val h = 96
+                        val w = (full.width.toFloat() / full.height * h).toInt().coerceAtLeast(1)
+                        val scaled = Bitmap.createScaledBitmap(full, w, h, true)
+                        if (scaled !== full) full.recycle()
+                        scaled.asImageBitmap()
+                    }
+            }
+        } catch (e: Exception) {
+            emptyList()
+        } finally {
+            retriever.release()
+        }
+    }
 
 /**
  * P2 截取页:内嵌视频预览 + 双滑块选 `[clipStartMs, clipEndMs]`,长度恒夹在 [500ms, 10s]。
@@ -67,6 +113,10 @@ fun TrimScreen(
     var positionMs by remember(state.sourceUri) { mutableStateOf(state.clipStartMs) }
     // 滑块松手后自增,触发预览从左滑竿重新播放。
     var restartTrigger by remember(state.sourceUri) { mutableStateOf(0) }
+    // P12 缩略图时间轴:源切换时重新抽帧(IO 线程,加载完成前条带留空)。
+    val thumbnails by produceState(emptyList<ImageBitmap>(), state.sourceLocalPath) {
+        value = state.sourceLocalPath?.let { loadThumbnails(it, state.durationMs) } ?: emptyList()
+    }
 
     Column(
         modifier = modifier
@@ -172,6 +222,46 @@ fun TrimScreen(
             val thumbRadius = 10.dp
             val trackWidth = maxWidth
 
+            // P12 缩略图时间轴:铺在滑竿背后(与轨道同坐标系),选区外压暗。
+            if (thumbnails.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = thumbRadius)
+                        .fillMaxWidth()
+                        .height(THUMB_STRIP_HEIGHT)
+                        .clip(RoundedCornerShape(6.dp)),
+                ) {
+                    thumbnails.forEach { tb ->
+                        Image(
+                            bitmap = tb,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                        )
+                    }
+                }
+                // 选区外压暗(与导出语义一致:暗处不会进成品)。
+                if (state.durationMs > 0) {
+                    Canvas(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(horizontal = thumbRadius)
+                            .fillMaxWidth()
+                            .height(THUMB_STRIP_HEIGHT)
+                            .clip(RoundedCornerShape(6.dp)),
+                    ) {
+                        val scrim = Color.Black.copy(alpha = 0.55f)
+                        val startX = size.width * state.clipStartMs / state.durationMs
+                        val endX = size.width * state.clipEndMs / state.durationMs
+                        drawRect(scrim, Offset(0f, 0f), Size(startX, size.height))
+                        drawRect(scrim, Offset(endX, 0f), Size(size.width - endX, size.height))
+                    }
+                }
+            }
+
             RangeSlider(
                 value = state.clipStartMs.toFloat()..state.clipEndMs.toFloat(),
                 onValueChange = { range ->
@@ -188,9 +278,15 @@ fun TrimScreen(
                 // 松手即从左滑竿重新播放。
                 onValueChangeFinished = { restartTrigger++ },
                 valueRange = 0f..state.durationMs.toFloat(),
-                // 左右两个滑竿手柄用中明度橙(明暗主题都清晰、非黑白);选中段轨道保持主题色。
-                colors = SliderDefaults.colors(thumbColor = TrimHandle),
-                modifier = Modifier.fillMaxWidth(),
+                // 手柄用中明度橙;轨道透明让缩略图透出(选区由压暗对比表达,P12)。
+                colors = SliderDefaults.colors(
+                    thumbColor = TrimHandle,
+                    activeTrackColor = Color.Transparent,
+                    inactiveTrackColor = Color.Transparent,
+                ),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(),
             )
 
             if (state.durationMs > 0) {
@@ -203,9 +299,9 @@ fun TrimScreen(
                         .align(Alignment.CenterStart)
                         .offset(x = playheadX - 1.dp)
                         .width(2.dp)
-                        .height(32.dp)
+                        .height(THUMB_STRIP_HEIGHT)
                         .background(
-                            color = Color.Black,
+                            color = Color.White,
                             shape = RoundedCornerShape(1.dp),
                         ),
                 )
