@@ -433,40 +433,49 @@ fun PreviewScreen(
             }
             val bitmapsNow by rememberUpdatedState(textBitmaps)
             val winPxNow by rememberUpdatedState(winWPx to winHPx)
-            // 指定文字的移动/缩放共用入口:整框夹紧(不溢出)、等比(断点不变 → 框比例恒定)。
-            val applyTextTransformFn: (Long, Offset, Float) -> Unit = transform@{ id, pan, zoom ->
-                val cur = currentState
-                val item = cur.texts.find { it.id == id } ?: return@transform
-                val bmp = bitmapsNow[id] ?: return@transform
-                val (w, h) = winPxNow
-                val (hw, hh) = rotatedHalfExtents(
-                    bmp.width / (2f * w), bmp.height / (2f * h), item.rotation,
-                )
-                val zoomMax = minOf(
-                    if (hw > 0f) 0.475f / hw else TEXT_SCALE_MAX,
-                    if (hh > 0f) 0.45f / hh else TEXT_SCALE_MAX,
-                )
-                val effZoom = zoom.coerceAtMost(zoomMax)
-                val ns = (item.scale * effZoom).coerceIn(TEXT_SCALE_MIN, TEXT_SCALE_MAX)
-                var nx = item.posX + pan.x / w
-                var ny = item.posY + pan.y / h
-                nx = if (hw >= 0.5f) 0.5f else nx.coerceIn(hw, 1f - hw)
-                ny = if (hh >= 0.5f) 0.5f else ny.coerceIn(hh, 1f - hh)
-                onChange(cur.copy(texts = cur.texts.map {
-                    if (it.id == id) it.copy(scale = ns, posX = nx, posY = ny) else it
-                }))
-            }
+            // 指定文字的移动/缩放/旋转共用入口:整框夹紧(不溢出)、等比(断点不变 → 框比例恒定)。
+            val applyTextTransformFn: (Long, Offset, Float, Float) -> Unit =
+                transform@{ id, pan, zoom, rotationChange ->
+                    val cur = currentState
+                    val item = cur.texts.find { it.id == id } ?: return@transform
+                    val bmp = bitmapsNow[id] ?: return@transform
+                    val (w, h) = winPxNow
+                    val baseScale = item.scale.coerceAtLeast(TEXT_SCALE_MIN)
+                    val baseHw = bmp.width / (2f * w * baseScale)
+                    val baseHh = bmp.height / (2f * h * baseScale)
+                    val newRot = item.rotation + rotationChange
+                    val (unitHw, unitHh) = rotatedHalfExtents(baseHw, baseHh, newRot)
+                    val scaleMax = minOf(
+                        TEXT_SCALE_MAX,
+                        if (unitHw > 0f) 0.475f / unitHw else TEXT_SCALE_MAX,
+                        if (unitHh > 0f) 0.45f / unitHh else TEXT_SCALE_MAX,
+                    )
+                    val ns = (item.scale * zoom).coerceIn(TEXT_SCALE_MIN, scaleMax)
+                    val hw = unitHw * ns
+                    val hh = unitHh * ns
+                    var nx = item.posX + pan.x / w
+                    var ny = item.posY + pan.y / h
+                    nx = if (hw >= 0.5f) 0.5f else nx.coerceIn(hw, 1f - hw)
+                    ny = if (hh >= 0.5f) 0.5f else ny.coerceIn(hh, 1f - hh)
+                    onChange(cur.copy(texts = cur.texts.map {
+                        if (it.id == id) {
+                            it.copy(scale = ns, posX = nx, posY = ny, rotation = newRot)
+                        } else {
+                            it
+                        }
+                    }))
+                }
             val applyTextTransform by rememberUpdatedState(applyTextTransformFn)
 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     // P5/P6 手势:单指拖动移位 + 双指缩放,统一走 transform。
-                    // P13:文字选中时,手势整体改道文字(缩放/移动文字,不动取景)。
+                    // P13:文字选中时,手势整体改道文字(缩放/旋转/移动文字,不动取景)。
                     .pointerInput(Unit) {
-                        detectTransformGestures { _, pan, zoom, _ ->
+                        detectTransformGestures { _, pan, zoom, rotation ->
                             selectedTextIdNow?.let { id ->
-                                applyTextTransform(id, pan, zoom)
+                                applyTextTransform(id, pan, zoom, rotation)
                                 return@detectTransformGestures
                             }
                             val s = (currentState.scale * zoom).coerceIn(1f, MAX_SCALE)
@@ -584,7 +593,7 @@ fun PreviewScreen(
                                     .graphicsLayer { rotationZ = item.rotation },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                // 文字本体:单击选中;**双击直接进编辑面板**;拖动移动 + 双指缩放。
+                                // 文字本体:单击选中;**双击直接进编辑面板**;拖动移动 + 双指缩放/旋转。
                                 Image(
                                     bitmap = bmp,
                                     contentDescription = null,
@@ -601,9 +610,9 @@ fun PreviewScreen(
                                             )
                                         }
                                         .pointerInput(item.id) {
-                                            detectTransformGestures { _, pan, zoom, _ ->
+                                            detectTransformGestures { _, pan, zoom, rotation ->
                                                 selectedTextId = item.id
-                                                // 组已旋转:把局部 pan 反旋回窗口坐标,拖动方向才跟手。
+                                                // 组已旋转:把局部 pan 旋回窗口坐标,拖动方向才跟手。
                                                 val rot = currentState.texts
                                                     .find { it.id == item.id }?.rotation ?: 0f
                                                 val rad = Math.toRadians(rot.toDouble())
@@ -613,7 +622,7 @@ fun PreviewScreen(
                                                     pan.x * c - pan.y * sn,
                                                     pan.x * sn + pan.y * c,
                                                 )
-                                                applyTextTransform(item.id, panWin, zoom)
+                                                applyTextTransform(item.id, panWin, zoom, rotation)
                                             }
                                         },
                                 )
@@ -660,7 +669,7 @@ fun PreviewScreen(
                                             modifier = Modifier.size(13.dp),
                                         )
                                     }
-                                    // 右下 旋转:绕文字中心拖动(角点矢量累计 → 角度);缩放走双指。
+                                    // 右下 旋转:绕文字中心拖动(角点矢量累计 → 角度);双指也可缩放/旋转。
                                     Box(
                                         Modifier
                                             .align(Alignment.BottomEnd)
