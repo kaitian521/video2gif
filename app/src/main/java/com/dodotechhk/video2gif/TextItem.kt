@@ -12,7 +12,7 @@ data class TextItem(
     val content: String,
     val fillColor: Int = android.graphics.Color.WHITE,
     val strokeColor: Int = android.graphics.Color.BLACK,
-    val bold: Boolean = true,
+    val bold: Boolean = false,
     val scale: Float = 1f,
     val posX: Float = 0.5f,
     val posY: Float = 0.85f,

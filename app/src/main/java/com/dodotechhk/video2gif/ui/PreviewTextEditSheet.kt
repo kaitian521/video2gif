@@ -14,9 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -30,6 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.R
@@ -100,10 +103,9 @@ internal fun PreviewTextEditSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(
+                BoldToggleButton(
                     selected = editing.bold,
                     onClick = { updateEditing { it.copy(bold = !it.bold) } },
-                    label = { Text(stringResource(R.string.text_bold)) },
                 )
                 Spacer(Modifier.weight(1f))
                 OutlinedButton(onClick = { onRequestDelete(editing.id) }) {
@@ -129,6 +131,39 @@ internal fun PreviewTextEditSheet(
             Text(stringResource(R.string.text_outline), style = MaterialTheme.typography.labelMedium)
             ColorDots(editing.strokeColor) { c -> updateEditing { it.copy(strokeColor = c) } }
         }
+    }
+}
+
+@Composable
+private fun BoldToggleButton(selected: Boolean, onClick: () -> Unit) {
+    val description = stringResource(R.string.text_bold)
+    val shape = RoundedCornerShape(10.dp)
+    val background =
+        if (selected) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceVariant
+    val foreground =
+        if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant
+    val borderColor =
+        if (selected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.outlineVariant
+
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(shape)
+            .background(background)
+            .border(1.5.dp, borderColor, shape)
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "B",
+            color = foreground,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+        )
     }
 }
 
