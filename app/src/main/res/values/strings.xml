@@ -96,6 +96,6 @@
     <string name="quality_low">Low</string>
     <string name="quality_medium">Medium</string>
     <string name="quality_high">High</string>
-    <string name="quality_extra_high">Extra High</string>
+    <string name="quality_extra_high">Extra</string>
     <string name="quality_max">Max</string>
 </resources>
