@@ -49,6 +49,7 @@
     <string name="delete">Delete</string>
     <string name="edit">Edit</string>
     <string name="resize">Resize</string>
+    <string name="rotate">Rotate</string>
     <string name="ok">OK</string>
     <string name="preview_gesture_hint">Pinch to zoom · Drag to move</string>
     <string name="speed">Speed</string>

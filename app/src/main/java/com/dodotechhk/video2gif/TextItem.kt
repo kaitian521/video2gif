@@ -16,4 +16,14 @@ data class TextItem(
     val scale: Float = 1f,
     val posX: Float = 0.5f,
     val posY: Float = 0.85f,
+    /** 旋转角(度,顺时针,绕文字中心);夹紧用旋转后 AABB。 */
+    val rotation: Float = 0f,
 )
+
+/** 半宽/半高经旋转后的 AABB 半径(夹紧用):|w·cosθ|+|h·sinθ| / |w·sinθ|+|h·cosθ|。 */
+fun rotatedHalfExtents(halfW: Float, halfH: Float, degrees: Float): Pair<Float, Float> {
+    val r = Math.toRadians(degrees.toDouble())
+    val c = kotlin.math.abs(kotlin.math.cos(r)).toFloat()
+    val s = kotlin.math.abs(kotlin.math.sin(r)).toFloat()
+    return halfW * c + halfH * s to halfW * s + halfH * c
+}

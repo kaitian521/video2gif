@@ -54,16 +54,19 @@ fun textOverlayEffect(state: EditState): OverlayEffect? {
             scale = item.scale.coerceIn(TEXT_SCALE_MIN, TEXT_SCALE_MAX),
         ) ?: return@mapNotNull null
 
-        // 夹紧:文字中心使整框落在画面内(导出端兜底;预览手势已夹过)。
-        val halfW = bitmap.width / (2f * outW)
-        val halfH = bitmap.height / (2f * outH)
+        // 夹紧:旋转后 AABB 整框落在画面内(导出端兜底;预览手势已夹过)。
+        val (halfW, halfH) = rotatedHalfExtents(
+            bitmap.width / (2f * outW), bitmap.height / (2f * outH), item.rotation,
+        )
         val px = if (halfW >= 0.5f) 0.5f else item.posX.coerceIn(halfW, 1f - halfW)
         val py = if (halfH >= 0.5f) 0.5f else item.posY.coerceIn(halfH, 1f - halfH)
 
         // 锚点:背景帧 NDC(x 右 y 上),(px,py) 是「x 右 y 下」的 0..1 → 转换;overlay 锚自身中心。
+        // 旋转:media3 为逆时针正方向,UI(Compose rotationZ)为顺时针 → 取负。
         val settings = StaticOverlaySettings.Builder()
             .setBackgroundFrameAnchor(2f * px - 1f, 1f - 2f * py)
             .setOverlayFrameAnchor(0f, 0f)
+            .setRotationDegrees(-item.rotation)
             .build()
         BitmapOverlay.createStaticBitmapOverlay(bitmap, settings)
     }

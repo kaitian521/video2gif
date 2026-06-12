@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -80,6 +82,7 @@ import com.dodotechhk.video2gif.R
 import com.dodotechhk.video2gif.TEXT_SCALE_MAX
 import com.dodotechhk.video2gif.TEXT_SCALE_MIN
 import com.dodotechhk.video2gif.TextItem
+import com.dodotechhk.video2gif.rotatedHalfExtents
 import com.dodotechhk.video2gif.TextOverlayRenderer
 import com.dodotechhk.video2gif.centerCropHalfExtents
 import com.dodotechhk.video2gif.clampedCropCenter
@@ -88,6 +91,7 @@ import com.dodotechhk.video2gif.VideoExporter
 import com.dodotechhk.video2gif.ui.theme.ChipSelected
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.atan2
 import kotlin.math.roundToInt
 
 /** 最大放大倍数(取景窗口最多缩到 1/MAX_SCALE)。 */
@@ -333,9 +337,12 @@ fun PreviewScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
-            // P13 新增文字入口(按钮样式,可加多条)。
+            // P13 新增文字入口(按钮样式,可加多条):先建空条目,底部矮弹片实时编辑。
             Button(onClick = {
-                editingTextId = null
+                val newId = (state.texts.maxOfOrNull { it.id } ?: 0L) + 1
+                onStateChange(state.copy(texts = state.texts + TextItem(id = newId, content = "")))
+                selectedTextId = newId
+                editingTextId = newId
                 showTextDialog = true
             }) { Text(stringResource(R.string.text_button)) }
         }
@@ -398,8 +405,9 @@ fun PreviewScreen(
                 val item = cur.texts.find { it.id == id } ?: return@transform
                 val bmp = bitmapsNow[id] ?: return@transform
                 val (w, h) = winPxNow
-                val hw = bmp.width / (2f * w)
-                val hh = bmp.height / (2f * h)
+                val (hw, hh) = rotatedHalfExtents(
+                    bmp.width / (2f * w), bmp.height / (2f * h), item.rotation,
+                )
                 val zoomMax = minOf(
                     if (hw > 0f) 0.475f / hw else TEXT_SCALE_MAX,
                     if (hh > 0f) 0.45f / hh else TEXT_SCALE_MAX,
@@ -515,124 +523,198 @@ fun PreviewScreen(
                         if (bmp != null) {
                             val hwFrac = bmp.width / (2f * winWPx)
                             val hhFrac = bmp.height / (2f * winHPx)
-                            val cx = if (hwFrac >= 0.5f) 0.5f else item.posX.coerceIn(hwFrac, 1f - hwFrac)
-                            val cy = if (hhFrac >= 0.5f) 0.5f else item.posY.coerceIn(hhFrac, 1f - hhFrac)
+                            // 夹紧用旋转后 AABB(旋转角越大占位越宽)。
+                            val (eHw, eHh) = rotatedHalfExtents(hwFrac, hhFrac, item.rotation)
+                            val cx = if (eHw >= 0.5f) 0.5f else item.posX.coerceIn(eHw, 1f - eHw)
+                            val cy = if (eHh >= 0.5f) 0.5f else item.posY.coerceIn(eHh, 1f - eHh)
                             val leftDp = originX + with(density) { ((cx - hwFrac) * winWPx).toDp() }
                             val topDp = originY + with(density) { ((cy - hhFrac) * winHPx).toDp() }
                             val boxWDp = with(density) { bmp.width.toDp() }
                             val boxHDp = with(density) { bmp.height.toDp() }
 
-                            // 文字本体:单击选中;拖动移动 + 双指缩放(同时置选中)。
-                            Image(
-                                bitmap = bmp,
-                                contentDescription = null,
+                            // 贴纸组:文字 + 框 + 角标作为**整体**绕中心旋转(框跟着转);
+                            // graphicsLayer 同步变换命中测试,旋转后角标仍可点。
+                            val framePad = 6.dp
+                            val handle = 24.dp
+                            Box(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
-                                    .offset(leftDp, topDp)
-                                    .size(boxWDp, boxHDp)
-                                    .pointerInput(item.id) {
-                                        detectTapGestures(onTap = { selectedTextId = item.id })
-                                    }
-                                    .pointerInput(item.id) {
-                                        detectTransformGestures { _, pan, zoom, _ ->
-                                            selectedTextId = item.id
-                                            applyTextTransform(item.id, pan, zoom)
-                                        }
-                                    },
-                            )
-
-                            // 选中态:矩形框 + 右上✕删除 / 左下编辑 / 右下拉伸。
-                            if (selectedTextId == item.id) {
-                                val framePad = 6.dp
-                                val handle = 24.dp
-                                Box(
-                                    Modifier
-                                        .align(Alignment.TopStart)
-                                        .offset(leftDp - framePad, topDp - framePad)
-                                        .size(boxWDp + framePad * 2, boxHDp + framePad * 2)
-                                        .border(1.5.dp, Color.White),
-                                )
-                                // 右上 ✕:删除(二次确认)。
-                                Box(
-                                    Modifier
-                                        .align(Alignment.TopStart)
-                                        .offset(
-                                            leftDp + boxWDp + framePad - handle / 2,
-                                            topDp - framePad - handle / 2,
-                                        )
-                                        .size(handle)
-                                        .clip(CircleShape)
-                                        .background(Color.White)
-                                        .clickable { pendingDeleteTextId = item.id },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Close,
-                                        contentDescription = stringResource(R.string.text_remove),
-                                        tint = Color.Black,
-                                        modifier = Modifier.size(14.dp),
-                                    )
-                                }
-                                // 左下 编辑:内容/加粗/颜色/描边。
-                                Box(
-                                    Modifier
-                                        .align(Alignment.TopStart)
-                                        .offset(
-                                            leftDp - framePad - handle / 2,
-                                            topDp + boxHDp + framePad - handle / 2,
-                                        )
-                                        .size(handle)
-                                        .clip(CircleShape)
-                                        .background(Color.White)
-                                        .clickable {
-                                            editingTextId = item.id
-                                            showTextDialog = true
-                                        },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Edit,
-                                        contentDescription = stringResource(R.string.edit),
-                                        tint = Color.Black,
-                                        modifier = Modifier.size(13.dp),
-                                    )
-                                }
-                                // 右下 拉伸:拖动等比改文字框大小(对角增量 → zoom)。
-                                Box(
-                                    Modifier
-                                        .align(Alignment.TopStart)
-                                        .offset(
-                                            leftDp + boxWDp + framePad - handle / 2,
-                                            topDp + boxHDp + framePad - handle / 2,
-                                        )
-                                        .size(handle)
-                                        .clip(CircleShape)
-                                        .background(Color.White)
+                                    .offset(leftDp - framePad, topDp - framePad)
+                                    .size(boxWDp + framePad * 2, boxHDp + framePad * 2)
+                                    .graphicsLayer { rotationZ = item.rotation },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                // 文字本体:单击选中;**双击直接进编辑面板**;拖动移动 + 双指缩放。
+                                Image(
+                                    bitmap = bmp,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(boxWDp, boxHDp)
                                         .pointerInput(item.id) {
-                                            detectDragGestures { change, drag ->
-                                                change.consume()
-                                                val curBmp = bitmapsNow[item.id]
-                                                if (curBmp != null) {
-                                                    val boxW = curBmp.width.toFloat().coerceAtLeast(1f)
-                                                    val boxH = curBmp.height.toFloat().coerceAtLeast(1f)
-                                                    val zoom = 1f + (drag.x + drag.y) / (boxW + boxH)
-                                                    applyTextTransform(item.id, Offset.Zero, zoom)
-                                                }
+                                            detectTapGestures(
+                                                onTap = { selectedTextId = item.id },
+                                                onDoubleTap = {
+                                                    selectedTextId = item.id
+                                                    editingTextId = item.id
+                                                    showTextDialog = true
+                                                },
+                                            )
+                                        }
+                                        .pointerInput(item.id) {
+                                            detectTransformGestures { _, pan, zoom, _ ->
+                                                selectedTextId = item.id
+                                                // 组已旋转:把局部 pan 反旋回窗口坐标,拖动方向才跟手。
+                                                val rot = currentState.texts
+                                                    .find { it.id == item.id }?.rotation ?: 0f
+                                                val rad = Math.toRadians(rot.toDouble())
+                                                val c = kotlin.math.cos(rad).toFloat()
+                                                val sn = kotlin.math.sin(rad).toFloat()
+                                                val panWin = Offset(
+                                                    pan.x * c - pan.y * sn,
+                                                    pan.x * sn + pan.y * c,
+                                                )
+                                                applyTextTransform(item.id, panWin, zoom)
                                             }
                                         },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Canvas(Modifier.size(11.dp)) {
-                                        drawLine(
-                                            Color.Black,
-                                            Offset(0f, size.height), Offset(size.width, 0f),
-                                            strokeWidth = 2f,
+                                )
+
+                                if (selectedTextId == item.id) {
+                                    // 矩形框(随组旋转)。
+                                    Box(Modifier.matchParentSize().border(1.5.dp, Color.White))
+                                    // 右上 ✕:删除(二次确认)。
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.TopEnd)
+                                            .offset(handle / 2, -handle / 2)
+                                            .size(handle)
+                                            .clip(CircleShape)
+                                            .background(Color.White)
+                                            .clickable { pendingDeleteTextId = item.id },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Close,
+                                            contentDescription = stringResource(R.string.text_remove),
+                                            tint = Color.Black,
+                                            modifier = Modifier.size(14.dp),
                                         )
-                                        drawLine(
-                                            Color.Black,
-                                            Offset(size.width * 0.5f, size.height),
-                                            Offset(size.width, size.height * 0.5f),
-                                            strokeWidth = 2f,
+                                    }
+                                    // 左下 编辑:内容/加粗/颜色/描边。
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.BottomStart)
+                                            .offset(-handle / 2, handle / 2)
+                                            .size(handle)
+                                            .clip(CircleShape)
+                                            .background(Color.White)
+                                            .clickable {
+                                                editingTextId = item.id
+                                                showTextDialog = true
+                                            },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Edit,
+                                            contentDescription = stringResource(R.string.edit),
+                                            tint = Color.Black,
+                                            modifier = Modifier.size(13.dp),
+                                        )
+                                    }
+                                    // 右下 旋转:绕文字中心拖动(角点矢量累计 → 角度);缩放走双指。
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .offset(handle / 2, handle / 2)
+                                            .size(handle)
+                                            .clip(CircleShape)
+                                            .background(Color.White)
+                                            .pointerInput(item.id) {
+                                                // 旋转 + 缩放二合一:手柄到中心的**角度变化 = 旋转**、
+                                                // **距离比例 = 缩放**。增量每步按当前角度反旋回窗口系
+                                                // 再累计(局部系自转会漂移),严格绕中心、跟手。
+                                                var baseRot = 0f
+                                                var baseScale = 1f
+                                                var baseHw = 0.1f
+                                                var baseHh = 0.1f
+                                                var v0Win = Offset(1f, 1f)
+                                                var vecWin = v0Win
+                                                fun rotate(v: Offset, deg: Float): Offset {
+                                                    val r = Math.toRadians(deg.toDouble())
+                                                    val c = kotlin.math.cos(r).toFloat()
+                                                    val sn = kotlin.math.sin(r).toFloat()
+                                                    return Offset(v.x * c - v.y * sn, v.x * sn + v.y * c)
+                                                }
+                                                detectDragGestures(
+                                                    onDragStart = {
+                                                        val cur = currentState.texts
+                                                            .find { it.id == item.id }
+                                                        baseRot = cur?.rotation ?: 0f
+                                                        baseScale = cur?.scale ?: 1f
+                                                        val b0 = bitmapsNow[item.id]
+                                                        val (w, h) = winPxNow
+                                                        // 拖拽起点的半宽高(对应 baseScale 的 bitmap),
+                                                        // 全程以此为参考 → 无重渲染反馈回路。
+                                                        baseHw = ((b0?.width ?: 2) / (2f * w)).coerceAtLeast(1e-4f)
+                                                        baseHh = ((b0?.height ?: 2) / (2f * h)).coerceAtLeast(1e-4f)
+                                                        val padPx = framePad.toPx()
+                                                        val corner = Offset(
+                                                            ((b0?.width ?: 2) / 2f + padPx).coerceAtLeast(1f),
+                                                            ((b0?.height ?: 2) / 2f + padPx).coerceAtLeast(1f),
+                                                        )
+                                                        v0Win = rotate(corner, baseRot)
+                                                        vecWin = v0Win
+                                                    },
+                                                ) { change, drag ->
+                                                    change.consume()
+                                                    val rotNow = currentState.texts
+                                                        .find { it.id == item.id }?.rotation ?: 0f
+                                                    vecWin += rotate(drag, rotNow)
+                                                    // 旋转:窗口系角度差。
+                                                    val newRot = baseRot + Math.toDegrees(
+                                                        (atan2(vecWin.y, vecWin.x) -
+                                                            atan2(v0Win.y, v0Win.x)).toDouble()
+                                                    ).toFloat()
+                                                    // 缩放:距离比;上限按旋转后 AABB 夹进窗口。
+                                                    val lenRatio = vecWin.getDistance() /
+                                                        v0Win.getDistance().coerceAtLeast(1f)
+                                                    val (effW1, effH1) = rotatedHalfExtents(
+                                                        baseHw / baseScale, baseHh / baseScale, newRot,
+                                                    )
+                                                    val sMax = minOf(
+                                                        TEXT_SCALE_MAX,
+                                                        if (effW1 > 0f) 0.475f / effW1 else TEXT_SCALE_MAX,
+                                                        if (effH1 > 0f) 0.45f / effH1 else TEXT_SCALE_MAX,
+                                                    )
+                                                    val newScale = (baseScale * lenRatio)
+                                                        .coerceIn(TEXT_SCALE_MIN, sMax)
+                                                    val cur = currentState
+                                                    onChange(cur.copy(texts = cur.texts.map { t ->
+                                                        if (t.id == item.id) {
+                                                            // 位置随新尺寸回夹(整框不出窗口)。
+                                                            val (eHw2, eHh2) = rotatedHalfExtents(
+                                                                baseHw / baseScale * newScale,
+                                                                baseHh / baseScale * newScale,
+                                                                newRot,
+                                                            )
+                                                            t.copy(
+                                                                rotation = newRot,
+                                                                scale = newScale,
+                                                                posX = if (eHw2 >= 0.5f) 0.5f
+                                                                else t.posX.coerceIn(eHw2, 1f - eHw2),
+                                                                posY = if (eHh2 >= 0.5f) 0.5f
+                                                                else t.posY.coerceIn(eHh2, 1f - eHh2),
+                                                            )
+                                                        } else t
+                                                    }))
+                                                }
+                                            },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Refresh,
+                                            contentDescription = stringResource(R.string.rotate),
+                                            tint = Color.Black,
+                                            modifier = Modifier.size(14.dp),
                                         )
                                     }
                                 }
@@ -849,134 +931,116 @@ fun PreviewScreen(
         }
     }
 
-    // P13 文字编辑对话框:内容 + 加粗 + 填充色/描边色两排圆点(可左右滑);OK 应用,Remove 删除。
+    // P13 文字编辑底部弹片:矮面板 + 透明遮罩,**实时生效**(边改边看预览)。
     if (showTextDialog) {
         val editing = state.texts.find { it.id == editingTextId }
-        var draft by remember(editingTextId, showTextDialog) {
-            mutableStateOf(editing?.content ?: "")
-        }
-        var draftFill by remember(editingTextId, showTextDialog) {
-            mutableStateOf(editing?.fillColor ?: android.graphics.Color.WHITE)
-        }
-        var draftStroke by remember(editingTextId, showTextDialog) {
-            mutableStateOf(editing?.strokeColor ?: android.graphics.Color.BLACK)
-        }
-        var draftBold by remember(editingTextId, showTextDialog) {
-            mutableStateOf(editing?.bold ?: true)
-        }
+        if (editing == null) {
+            // 条目已不存在(被删),直接收起。
+            showTextDialog = false
+        } else {
+            // 编辑目标字段实时写回 state。
+            val updateEditing: ((TextItem) -> TextItem) -> Unit = { f ->
+                onStateChange(
+                    state.copy(texts = state.texts.map { if (it.id == editing.id) f(it) else it })
+                )
+            }
+            // 收起:空内容条目直接移除(新增后没输入也不留垃圾)。
+            val dismissSheet = {
+                showTextDialog = false
+                if (editing.content.isBlank()) {
+                    if (selectedTextId == editing.id) selectedTextId = null
+                    onStateChange(state.copy(texts = state.texts.filterNot { it.id == editing.id }))
+                }
+            }
 
-        // 圆点调色板行(填充/描边共用)。
-        @Composable
-        fun ColorDots(selected: Int, onPick: (Int) -> Unit) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            // 圆点调色板行(填充/描边共用)。
+            @Composable
+            fun ColorDots(selected: Int, onPick: (Int) -> Unit) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    TEXT_COLORS.forEach { c ->
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color(c))
+                                .border(
+                                    width = if (selected == c) 3.dp else 1.dp,
+                                    color = if (selected == c) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        Color.Gray
+                                    },
+                                    shape = CircleShape,
+                                )
+                                .clickable { onPick(c) },
+                        )
+                    }
+                }
+            }
+
+            ModalBottomSheet(
+                onDismissRequest = { dismissSheet() },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                // 透明遮罩:上方预览保持原亮度,实时看编辑效果。
+                scrimColor = Color.Transparent,
             ) {
-                TEXT_COLORS.forEach { c ->
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color(c))
-                            .border(
-                                width = if (selected == c) 3.dp else 1.dp,
-                                color = if (selected == c) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    Color.Gray
-                                },
-                                shape = CircleShape,
-                            )
-                            .clickable { onPick(c) },
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = editing.content,
+                        onValueChange = { v ->
+                            updateEditing { it.copy(content = v.take(TextOverlayRenderer.MAX_CHARS)) }
+                        },
+                        placeholder = { Text(stringResource(R.string.text_hint)) },
+                        modifier = Modifier.fillMaxWidth(),
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = editing.bold,
+                            onClick = { updateEditing { it.copy(bold = !it.bold) } },
+                            label = { Text(stringResource(R.string.text_bold)) },
+                        )
+                        Spacer(Modifier.weight(1f))
+                        OutlinedButton(onClick = {
+                            showTextDialog = false
+                            pendingDeleteTextId = editing.id
+                        }) { Text(stringResource(R.string.text_remove)) }
+                        Button(onClick = { dismissSheet() }) { Text(stringResource(R.string.ok)) }
+                    }
+                    Text(stringResource(R.string.text_color), style = MaterialTheme.typography.labelMedium)
+                    ColorDots(editing.fillColor) { c ->
+                        updateEditing {
+                            // 描边未单独改过(仍是旧填充的反差色)时,跟随新反差色。
+                            val follows =
+                                it.strokeColor == TextOverlayRenderer.strokeColorFor(it.fillColor)
+                            it.copy(
+                                fillColor = c,
+                                strokeColor = if (follows) {
+                                    TextOverlayRenderer.strokeColorFor(c)
+                                } else {
+                                    it.strokeColor
+                                },
+                            )
+                        }
+                    }
+                    Text(stringResource(R.string.text_outline), style = MaterialTheme.typography.labelMedium)
+                    ColorDots(editing.strokeColor) { c -> updateEditing { it.copy(strokeColor = c) } }
                 }
             }
         }
-
-        AlertDialog(
-            onDismissRequest = { showTextDialog = false },
-            title = {
-                Text(
-                    stringResource(
-                        if (editing == null) R.string.text_dialog_title else R.string.edit
-                    )
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = draft,
-                        onValueChange = { draft = it.take(TextOverlayRenderer.MAX_CHARS) },
-                        placeholder = { Text(stringResource(R.string.text_hint)) },
-                        minLines = 2,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    FilterChip(
-                        selected = draftBold,
-                        onClick = { draftBold = !draftBold },
-                        label = { Text(stringResource(R.string.text_bold)) },
-                    )
-                    Text(stringResource(R.string.text_color), style = MaterialTheme.typography.labelMedium)
-                    ColorDots(draftFill) { c ->
-                        // 换填充色时,若描边未被单独改过(仍是旧填充的反差色),跟随新反差色。
-                        if (draftStroke == TextOverlayRenderer.strokeColorFor(draftFill)) {
-                            draftStroke = TextOverlayRenderer.strokeColorFor(c)
-                        }
-                        draftFill = c
-                    }
-                    Text(stringResource(R.string.text_outline), style = MaterialTheme.typography.labelMedium)
-                    ColorDots(draftStroke) { draftStroke = it }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    showTextDialog = false
-                    val content = draft.trim()
-                    if (editing != null) {
-                        if (content.isBlank()) {
-                            pendingDeleteTextId = editing.id
-                        } else {
-                            onStateChange(
-                                state.copy(texts = state.texts.map {
-                                    if (it.id == editing.id) {
-                                        it.copy(
-                                            content = content,
-                                            fillColor = draftFill,
-                                            strokeColor = draftStroke,
-                                            bold = draftBold,
-                                        )
-                                    } else it
-                                })
-                            )
-                        }
-                    } else if (content.isNotBlank()) {
-                        val newId = (state.texts.maxOfOrNull { it.id } ?: 0L) + 1
-                        selectedTextId = newId
-                        onStateChange(
-                            state.copy(
-                                texts = state.texts + TextItem(
-                                    id = newId,
-                                    content = content,
-                                    fillColor = draftFill,
-                                    strokeColor = draftStroke,
-                                    bold = draftBold,
-                                )
-                            )
-                        )
-                    }
-                }) { Text(stringResource(R.string.ok)) }
-            },
-            dismissButton = {
-                if (editing != null) {
-                    OutlinedButton(onClick = {
-                        showTextDialog = false
-                        pendingDeleteTextId = editing.id
-                    }) { Text(stringResource(R.string.text_remove)) }
-                }
-            },
-        )
     }
 
     // P13 删除文字二次确认(按 id)。
