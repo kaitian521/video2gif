@@ -24,6 +24,13 @@ val WarmSecondaryDark = Color(0xFFE6BEA8)
 val WarmTertiary = Color(0xFF9C4146)
 val WarmTertiaryDark = Color(0xFFFFB3B0)
 
+/** 预览页「Add Text」按钮:亮蓝,与橙主色形成冷暖对比,明暗主题下都清晰。 */
+val AddTextBlue = Color(0xFF3D8BFF)
+
+/** 首页「Video to GIF」入口卡片渐变:金黄 → 品牌橙,明暗主题通用的活泼暖色。 */
+val HomeCardGradientStart = Color(0xFFFFB930)
+val HomeCardGradientEnd = Color(0xFFFF6A00)
+
 /** 截取页滑竿手柄强调色:与品牌橙一致,深色/浅色主题下都清晰可辨。 */
 val TrimHandle = KwaiOrange
 

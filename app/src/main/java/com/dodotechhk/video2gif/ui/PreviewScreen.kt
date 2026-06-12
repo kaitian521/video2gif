@@ -13,6 +13,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -91,6 +93,7 @@ import com.dodotechhk.video2gif.withClampedOffsets
 import com.dodotechhk.video2gif.VideoExporter
 import com.dodotechhk.video2gif.works.ExportRecord
 import com.dodotechhk.video2gif.works.WorksDatabase
+import com.dodotechhk.video2gif.ui.theme.AddTextBlue
 import com.dodotechhk.video2gif.ui.theme.ChipSelected
 import kotlinx.coroutines.launch
 import java.io.File
@@ -372,13 +375,23 @@ fun PreviewScreen(
                 Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.rotate))
             }
             // P13 新增文字入口(按钮样式,可加多条):先建空条目,底部矮弹片实时编辑。
-            Button(onClick = {
-                val newId = (state.texts.maxOfOrNull { it.id } ?: 0L) + 1
-                onStateChange(state.copy(texts = state.texts + TextItem(id = newId, content = "")))
-                selectedTextId = newId
-                editingTextId = newId
-                showTextDialog = true
-            }) { Text(stringResource(R.string.text_button)) }
+            // 矮款按钮:顶栏内不喧宾夺主。
+            Button(
+                onClick = {
+                    val newId = (state.texts.maxOfOrNull { it.id } ?: 0L) + 1
+                    onStateChange(state.copy(texts = state.texts + TextItem(id = newId, content = "")))
+                    selectedTextId = newId
+                    editingTextId = newId
+                    showTextDialog = true
+                },
+                modifier = Modifier.height(32.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                // 蓝色系:与橙主色冷暖对比,区别于主操作 Export。
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AddTextBlue,
+                    contentColor = Color.White,
+                ),
+            ) { Text(stringResource(R.string.text_button)) }
         }
 
         // 预览:无取景框,裁切窗口(外框)**严格等于所选比例**。
@@ -839,10 +852,13 @@ fun PreviewScreen(
             onClick = { showExportSheet = true },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = 24.dp)
+                // 高款主操作按钮:比默认 40dp 更醒目易点。
+                .height(52.dp),
         ) {
             Text(
-                stringResource(if (exporting) R.string.exporting else R.string.export)
+                stringResource(if (exporting) R.string.exporting else R.string.export),
+                style = MaterialTheme.typography.titleMedium,
             )
         }
     }

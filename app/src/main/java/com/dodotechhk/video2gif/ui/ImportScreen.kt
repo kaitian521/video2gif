@@ -3,6 +3,7 @@ package com.dodotechhk.video2gif.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,14 +29,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.ExportPrefs
 import com.dodotechhk.video2gif.R
 import com.dodotechhk.video2gif.VideoImporter
 import com.dodotechhk.video2gif.defaultClipEndMs
+import com.dodotechhk.video2gif.ui.theme.HomeCardGradientEnd
+import com.dodotechhk.video2gif.ui.theme.HomeCardGradientStart
 import kotlinx.coroutines.launch
 
 /** 导入页 UI 状态(成功后通过回调离开本页,故无 Loaded 态)。 */
@@ -124,7 +130,7 @@ fun ImportScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-        // 首页入口卡片:点击进相册选视频。
+        // 首页入口卡片:点击进相册选视频。金黄→品牌橙渐变 + 白字,比默认灰底更醒目。
         Card(
             onClick = {
                 picker.launch(
@@ -133,11 +139,20 @@ fun ImportScreen(
             },
             enabled = status != ImportStatus.Loading,
             elevation = CardDefaults.elevatedCardElevation(),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent,
+            ),
             modifier = Modifier.fillMaxWidth(0.8f),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(
+                        Brush.linearGradient(
+                            listOf(HomeCardGradientStart, HomeCardGradientEnd)
+                        )
+                    )
                     .padding(vertical = 48.dp, horizontal = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -145,11 +160,13 @@ fun ImportScreen(
                 Text(
                     stringResource(R.string.home_title),
                     style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
                 )
                 Text(
                     stringResource(R.string.home_pick_video),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color.White.copy(alpha = 0.9f),
                 )
             }
         }
