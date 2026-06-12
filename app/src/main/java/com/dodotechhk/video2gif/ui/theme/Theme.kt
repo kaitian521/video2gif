@@ -1,54 +1,39 @@
 package com.dodotechhk.video2gif.ui.theme
 
 import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = KwaiOrangeBright,
+    onPrimary = KwaiOnOrangeDark,
+    primaryContainer = KwaiOrangeContainerDark,
+    onPrimaryContainer = KwaiOnOrangeContainerDark,
+    secondary = WarmSecondaryDark,
+    tertiary = WarmTertiaryDark,
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    primary = KwaiOrange,
+    onPrimary = KwaiOnOrange,
+    primaryContainer = KwaiOrangeContainer,
+    onPrimaryContainer = KwaiOnOrangeContainer,
+    secondary = WarmSecondary,
+    tertiary = WarmTertiary,
 )
 
 @Composable
 fun Video2gifTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // 关闭动态取色:品牌主题(快手橙)优先,Android 12+ 也不被壁纸色覆盖,
+    // 否则按钮/选中态在不同设备上颜色不一致。
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
     MaterialTheme(
         colorScheme = colorScheme,
