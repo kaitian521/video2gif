@@ -44,7 +44,11 @@ fun Video2gifApp(modifier: Modifier = Modifier) {
                     state = current,
                     onStateChange = { editState = it },
                     onBack = { editState = null },
-                    onNext = { screen = Screen.Preview },
+                    // 进预览页一律清空效果(旋转/比例/缩放/偏移/变速/文字),纯新预览。
+                    onNext = {
+                        editState = current.resetEffects()
+                        screen = Screen.Preview
+                    },
                     modifier = modifier,
                 )
             }

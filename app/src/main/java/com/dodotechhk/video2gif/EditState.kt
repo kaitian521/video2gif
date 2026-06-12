@@ -84,4 +84,18 @@ data class EditState(
     /** 经比例裁剪后的输出宽高比(宽/高):选了比例用之,否则用**旋转后**源比例。供预览页定框用。 */
     val outputAspectRatio: Float
         get() = aspect.ratio ?: rotatedSourceAspectRatio
+
+    /**
+     * 重置全部效果字段(比例/缩放/旋转/偏移/变速/文字)为出厂值:每次进预览页都是
+     * 纯新的预览数据(上次会话的效果不残留)。源信息/截取区间/导出偏好保留。
+     */
+    fun resetEffects(): EditState = copy(
+        aspect = AspectRatio.Original,
+        scale = 1f,
+        rotation = 0,
+        offsetX = 0f,
+        offsetY = 0f,
+        speed = 1f,
+        texts = emptyList(),
+    )
 }

@@ -1,5 +1,6 @@
 package com.dodotechhk.video2gif.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -164,6 +165,13 @@ fun PreviewScreen(
     }
     // 导出成功对话框(面板收起后弹出,提供分享入口)。
     var showSuccessDialog by remember(state.sourceUri) { mutableStateOf(false) }
+    // 本次预览是否成功导出过:决定返回时要不要二次确认。
+    var hasExported by remember(state.sourceUri) { mutableStateOf(false) }
+    var showExitConfirm by remember(state.sourceUri) { mutableStateOf(false) }
+    // 返回入口统一走这:没导出过先确认,导出过直接走。
+    val attemptBack = {
+        if (hasExported) onBack() else showExitConfirm = true
+    }
     // P13 文字编辑对话框(editingTextId = null 表示新增)。
     var showTextDialog by remember(state.sourceUri) { mutableStateOf(false) }
     var editingTextId by remember(state.sourceUri) { mutableStateOf<Long?>(null) }
@@ -188,6 +196,7 @@ fun PreviewScreen(
             // 终态:收起面板,Toast 报结果(成功产物仍可重开面板分享)。
             showExportSheet = false
             if (uri != null) {
+                hasExported = true
                 savedResult = uri to format
                 val dir = if (format.isVideo) "Movies" else "Pictures"
                 exportStatus =
@@ -315,6 +324,9 @@ fun PreviewScreen(
     val currentState by rememberUpdatedState(state)
     val onChange by rememberUpdatedState(onStateChange)
 
+    // 系统返回键与顶栏一致:未导出先确认(此 BackHandler 在 App 级之内,优先生效)。
+    BackHandler { attemptBack() }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -326,7 +338,7 @@ fun PreviewScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = attemptBack) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(R.string.back),
@@ -1058,6 +1070,26 @@ fun PreviewScreen(
                 }
             }
         }
+    }
+
+    // 返回二次确认:本次没导出过才弹;Leave 放弃编辑回截取页。
+    if (showExitConfirm) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirm = false },
+            title = { Text(stringResource(R.string.back_confirm_title)) },
+            text = { Text(stringResource(R.string.back_confirm_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    showExitConfirm = false
+                    onBack()
+                }) { Text(stringResource(R.string.leave)) }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showExitConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 
     // P13 删除文字二次确认(按 id)。

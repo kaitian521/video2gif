@@ -38,6 +38,9 @@
 
     <!-- Preview -->
     <string name="preview_title">Preview</string>
+    <string name="back_confirm_title">Leave without exporting?</string>
+    <string name="back_confirm_message">Your edits won\'t be saved.</string>
+    <string name="leave">Leave</string>
     <string name="text_button">Add Text</string>
     <string name="text_color">Color</string>
     <string name="text_outline">Outline</string>
