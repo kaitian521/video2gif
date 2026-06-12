@@ -41,6 +41,8 @@ data class EditState(
     val aspect: AspectRatio = AspectRatio.Original,
     /** P5 缩放:取景窗口放大倍数(≥1,1=不放大)。放大 → 裁剪窗口相对更小(halfW/s, halfH/s)。 */
     val scale: Float = 1f,
+    /** P5 余项:视频旋转(顺时针度数,仅 0/90/180/270 步进;任意角不做)。 */
+    val rotation: Int = 0,
     /**
      * P6 拖动:裁剪窗口中心的 NDC 偏移(GL 约定,y 朝上;0 = 居中)。
      * 使用前一律经 [clampedCropCenter] 夹紧(|c| ≤ 1 - half),保证窗口不出内容、不露黑边。
@@ -75,7 +77,11 @@ data class EditState(
             16f / 9f
         }
 
-    /** 经比例裁剪后的输出宽高比(宽/高):选了比例用之,否则用源比例。供预览页按比例定框用。 */
+    /** 旋转后的源显示宽高比(90/270° 交换宽高);裁剪几何与预览 cover 几何都用它。 */
+    val rotatedSourceAspectRatio: Float
+        get() = if (rotation % 180 != 0) 1f / sourceAspectRatio else sourceAspectRatio
+
+    /** 经比例裁剪后的输出宽高比(宽/高):选了比例用之,否则用**旋转后**源比例。供预览页定框用。 */
     val outputAspectRatio: Float
-        get() = aspect.ratio ?: sourceAspectRatio
+        get() = aspect.ratio ?: rotatedSourceAspectRatio
 }

@@ -5,6 +5,7 @@ import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.Crop
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.Presentation
+import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextureOverlay
 import kotlin.math.roundToInt
@@ -25,7 +26,17 @@ const val TEXT_SCALE_MAX = 4f
  * 导出用 `EditedMediaItem.Builder#setSpeed`(技术方案 §5.4 / 实施计划 P7)。
  */
 fun buildVideoEffects(state: EditState): List<Effect> = buildList {
-    // P4:比例中心裁剪(P5 起 ScaleAndRotate 会插到 cropEffect 之前)。
+    // P5 余项:90° 步进旋转,插在 Crop 之前(裁剪几何按旋转后宽高比取值,
+    // 90° 步进内接矩形退化为宽高交换,无黑边问题)。
+    // media3 旋转为逆时针正方向,state.rotation 为顺时针 → 换算。
+    if (state.rotation % 360 != 0) {
+        add(
+            ScaleAndRotateTransformation.Builder()
+                .setRotationDegrees(((360 - state.rotation % 360) % 360).toFloat())
+                .build()
+        )
+    }
+    // P4:比例中心裁剪。
     add(cropEffect(state))
     // P3:Presentation 把输出定到 targetHeight(宽按裁后比例派生)。
     // 计划里的 copyWithUnsetSideRoundedTo(2) 在 1.10.1 未确认存在,故不用;

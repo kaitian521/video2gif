@@ -78,6 +78,20 @@ class CropGeometryTest {
     }
 
     @Test
+    fun rotation_90_swaps_source_aspect() {
+        // 横屏源旋 90° 后按竖屏取裁剪几何:1:1 从「裁宽」变「裁高」。
+        val st = state(1920, 1080, AspectRatio.Square).copy(rotation = 90)
+        val (halfW, halfH) = centerCropHalfExtents(st)
+        assertEquals(1f, halfW, 1e-4f)
+        assertEquals(1080f / 1920f, halfH, 1e-4f)
+        // 180° 不交换,与 0° 相同。
+        val st180 = state(1920, 1080, AspectRatio.Square).copy(rotation = 180)
+        val (hw180, hh180) = centerCropHalfExtents(st180)
+        assertEquals(1080f / 1920f, hw180, 1e-4f)
+        assertEquals(1f, hh180, 1e-4f)
+    }
+
+    @Test
     fun scale_below_one_is_clamped_to_one() {
         val (hw1, hh1) = centerCropHalfExtents(state(1920, 1080, AspectRatio.Square))
         val (hw, hh) = centerCropHalfExtents(state(1920, 1080, AspectRatio.Square).copy(scale = 0.5f))

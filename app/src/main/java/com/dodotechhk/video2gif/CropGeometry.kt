@@ -27,7 +27,7 @@ enum class AspectRatio(val label: String, val ratio: Float?) {
  *    比例不变(同除一个数)、窗口更小 = 放大取景。`s ≥ 1` 保证不越界、不露黑。
  */
 fun centerCropHalfExtents(state: EditState): Pair<Float, Float> {
-    val srcAR = state.sourceAspectRatio
+    val srcAR = state.rotatedSourceAspectRatio
     val targetAR = state.aspect.ratio ?: srcAR
     val r = targetAR / srcAR
     val (aspectHalfW, aspectHalfH) = if (r <= 1f) r to 1f else 1f to (1f / r)

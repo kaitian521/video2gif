@@ -337,6 +337,14 @@ fun PreviewScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
+            // P5 余项:整体旋转 90°(顺时针步进;偏移按新几何回夹)。
+            IconButton(onClick = {
+                onStateChange(
+                    state.copy(rotation = (state.rotation + 90) % 360).withClampedOffsets()
+                )
+            }) {
+                Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.rotate))
+            }
             // P13 新增文字入口(按钮样式,可加多条):先建空条目,底部矮弹片实时编辑。
             Button(onClick = {
                 val newId = (state.texts.maxOfOrNull { it.id } ?: 0L) + 1
@@ -370,13 +378,16 @@ fun PreviewScreen(
             } else {
                 maxWidth to maxWidth / outAR
             }
-            // 源比例 cover 外框:源更宽 → 定高、左右溢出;源更高 → 定宽、上下溢出。
-            val srcAR = state.sourceAspectRatio
-            val (videoW, videoH) = if (srcAR >= outAR) vh * srcAR to vh else vw to vw / srcAR
-            // 手势换算用的内容像素尺寸(随比例/布局变;rememberUpdatedState 防 pointerInput 闭包读旧值)。
+            // 旋转后内容 cover 外框(P5 余项):先算**旋转后**内容的显示尺寸(rotW×rotH),
+            // 再换回 PlayerView 的未旋转布局尺寸(graphicsLayer 转 90° 后恰好覆盖外框)。
+            val rotAR = state.rotatedSourceAspectRatio
+            val (rotW, rotH) = if (rotAR >= outAR) vh * rotAR to vh else vw to vw / rotAR
+            val quarterTurn = state.rotation % 180 != 0
+            val (videoW, videoH) = if (quarterTurn) rotH to rotW else rotW to rotH
+            // 手势换算用旋转后内容像素尺寸(裁剪窗口坐标定义在旋转后帧上,与屏幕轴对齐)。
             val density = LocalDensity.current
             val contentPx by rememberUpdatedState(
-                with(density) { videoW.toPx() } to with(density) { videoH.toPx() },
+                with(density) { rotW.toPx() } to with(density) { rotH.toPx() },
             )
 
             // P13 文字几何:窗口 px + 各条文字的同源 bitmap(key=id 稳定缓存)。
@@ -474,6 +485,7 @@ fun PreviewScreen(
                         state = state.copy(
                             aspect = AspectRatio.Original,
                             scale = 1f,
+                            rotation = 0,
                             offsetX = 0f,
                             offsetY = 0f,
                             texts = emptyList(),
@@ -494,12 +506,17 @@ fun PreviewScreen(
                                 val s = state.scale
                                 scaleX = s
                                 scaleY = s
+                                // P5 余项:90° 步进旋转(顺时针,与导出 ScaleAndRotate 换算一致)。
+                                rotationZ = state.rotation.toFloat()
                                 // 把窗口中心 (cx,cy) 平移到外框中心:NDC → px 乘内容半宽/半高×s,
                                 // x 反向(内容左移露出右部),y 再取反回屏幕系。与导出 cropEffect
-                                // 共用 clampedCropCenter 真值。
+                                // 共用 clampedCropCenter 真值。旋转帧的横/纵跨度对应布局的
+                                // 宽/高(90/270° 互换)。
                                 val (cx, cy) = clampedCropCenter(state)
-                                translationX = -cx * size.width / 2f * s
-                                translationY = cy * size.height / 2f * s
+                                val rw = if (state.rotation % 180 != 0) size.height else size.width
+                                val rh = if (state.rotation % 180 != 0) size.width else size.height
+                                translationX = -cx * rw / 2f * s
+                                translationY = cy * rh / 2f * s
                             },
                     )
 
