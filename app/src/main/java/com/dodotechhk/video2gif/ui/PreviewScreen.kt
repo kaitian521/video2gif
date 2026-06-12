@@ -1,7 +1,11 @@
 package com.dodotechhk.video2gif.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
@@ -13,15 +17,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +40,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -44,8 +54,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -53,6 +66,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.AspectRatio
 import com.dodotechhk.video2gif.EditState
@@ -62,6 +76,9 @@ import com.dodotechhk.video2gif.ExportQuality
 import com.dodotechhk.video2gif.FormatConverter
 import com.dodotechhk.video2gif.MediaStoreSaver
 import com.dodotechhk.video2gif.R
+import com.dodotechhk.video2gif.TEXT_SCALE_MAX
+import com.dodotechhk.video2gif.TEXT_SCALE_MIN
+import com.dodotechhk.video2gif.TextOverlayRenderer
 import com.dodotechhk.video2gif.centerCropHalfExtents
 import com.dodotechhk.video2gif.clampedCropCenter
 import com.dodotechhk.video2gif.withClampedOffsets
@@ -84,6 +101,12 @@ private fun accentChipColors() = FilterChipDefaults.filterChipColors(
     selectedLabelColor = Color.Black,
     disabledSelectedContainerColor = ChipSelected.copy(alpha = 0.5f),
 )
+
+/** P13 文字调色板(圆点,横向可滑);描边自动反差色。 */
+private val TEXT_COLORS = listOf(
+    0xFFFFFFFF, 0xFF000000, 0xFFF44336, 0xFFFF9800, 0xFFFFEB3B, 0xFF4CAF50,
+    0xFF00BCD4, 0xFF2196F3, 0xFF3F51B5, 0xFF9C27B0, 0xFFE91E63, 0xFF795548, 0xFF9E9E9E,
+).map { it.toInt() }
 
 /** 可选输出分辨率(目标高度,px;宽按比例派生)。技术方案 §导出参数。 */
 private val RESOLUTION_HEIGHTS = listOf(240, 360, 480, 540, 720, 1080)
@@ -135,6 +158,11 @@ fun PreviewScreen(
     }
     // 导出成功对话框(面板收起后弹出,提供分享入口)。
     var showSuccessDialog by remember(state.sourceUri) { mutableStateOf(false) }
+    // P13 文字编辑对话框。
+    var showTextDialog by remember(state.sourceUri) { mutableStateOf(false) }
+    // P13 文字选中态:选中显示矩形框+角标,双指归文字;点空白取消。
+    var textSelected by remember(state.sourceUri) { mutableStateOf(false) }
+    val textSelectedNow by rememberUpdatedState(textSelected)
 
     // 结果提示:成功/失败都 Toast(面板已收起或被关掉时也能看到)。
     val toast: (String) -> Unit = { msg ->
@@ -300,6 +328,10 @@ fun PreviewScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
+            // P13 文字贴字入口。
+            TextButton(onClick = { showTextDialog = true }) {
+                Text(stringResource(R.string.text_button))
+            }
         }
 
         // 预览:无取景框,裁切窗口(外框)**严格等于所选比例**。
@@ -317,6 +349,9 @@ fun PreviewScreen(
             contentAlignment = Alignment.Center,
         ) {
             val outAR = state.outputAspectRatio
+            // 先捕获约束(内层 BoxScope 会遮蔽 BoxWithConstraintsScope 的 maxWidth/maxHeight)。
+            val parentW = maxWidth
+            val parentH = maxHeight
             val (vw, vh) = if (outAR <= 9f / 15f) {
                 maxHeight * outAR to maxHeight
             } else {
@@ -331,12 +366,60 @@ fun PreviewScreen(
                 with(density) { videoW.toPx() } to with(density) { videoH.toPx() },
             )
 
+            // P13 文字几何:窗口 px、同源 bitmap、半宽高(先于手势 Box 计算,供选中态路由用)。
+            val winWPx = with(density) { vw.toPx() }
+            val winHPx = with(density) { vh.toPx() }
+            val textBitmap = remember(
+                state.textContent, state.textColor, state.textBold, state.textScale,
+                winWPx, winHPx,
+            ) {
+                if (state.textContent.isBlank()) null
+                else TextOverlayRenderer.renderScaled(
+                    content = state.textContent,
+                    fillColor = state.textColor,
+                    bold = state.textBold,
+                    winWPx = winWPx.toInt(),
+                    winHPx = winHPx.toInt(),
+                    scale = state.textScale,
+                )?.asImageBitmap()
+            }
+            val textGeo by rememberUpdatedState(
+                Triple(
+                    winWPx to winHPx,
+                    (textBitmap?.width ?: 0) / (2f * winWPx),
+                    (textBitmap?.height ?: 0) / (2f * winHPx),
+                ),
+            )
+            // 文字移动/缩放共用入口:整框夹紧(不溢出)。选中态外层手势、文字本体、拉伸角标都走这。
+            val applyTextTransform by rememberUpdatedState<(Offset, Float) -> Unit> { pan, zoom ->
+                val cur = currentState
+                val (win, hw, hh) = textGeo
+                val (w, h) = win
+                // 缩放上限按窗口动态夹紧(整框不溢出);断点不变 → 框比例恒定。
+                val zoomMax = minOf(
+                    if (hw > 0f) 0.475f / hw else TEXT_SCALE_MAX,
+                    if (hh > 0f) 0.45f / hh else TEXT_SCALE_MAX,
+                )
+                val effZoom = zoom.coerceAtMost(zoomMax)
+                val ns = (cur.textScale * effZoom).coerceIn(TEXT_SCALE_MIN, TEXT_SCALE_MAX)
+                var nx = cur.textPosX + pan.x / w
+                var ny = cur.textPosY + pan.y / h
+                nx = if (hw >= 0.5f) 0.5f else nx.coerceIn(hw, 1f - hw)
+                ny = if (hh >= 0.5f) 0.5f else ny.coerceIn(hh, 1f - hh)
+                onChange(cur.copy(textScale = ns, textPosX = nx, textPosY = ny))
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     // P5/P6 手势:单指拖动移位 + 双指缩放,统一走 transform。
+                    // P13:文字选中时,手势整体改道文字(缩放/移动文字,不动取景)。
                     .pointerInput(Unit) {
                         detectTransformGestures { _, pan, zoom, _ ->
+                            if (textSelectedNow) {
+                                applyTextTransform(pan, zoom)
+                                return@detectTransformGestures
+                            }
                             val s = (currentState.scale * zoom).coerceIn(1f, MAX_SCALE)
                             val scaled = currentState.copy(scale = s)
                             val (wPx, hPx) = contentPx
@@ -350,11 +433,14 @@ fun PreviewScreen(
                             onChange(scaled.copy(offsetX = cx, offsetY = cy))
                         }
                     }
-                    // 双击复位:缩放 + 位置一起归零。
+                    // 单击空白:取消文字选中(矩形框消失);双击复位取景缩放+位置。
                     .pointerInput(Unit) {
-                        detectTapGestures(onDoubleTap = {
-                            onChange(currentState.copy(scale = 1f, offsetX = 0f, offsetY = 0f))
-                        })
+                        detectTapGestures(
+                            onTap = { textSelected = false },
+                            onDoubleTap = {
+                                onChange(currentState.copy(scale = 1f, offsetX = 0f, offsetY = 0f))
+                            },
+                        )
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -375,6 +461,7 @@ fun PreviewScreen(
                             scale = 1f,
                             offsetX = 0f,
                             offsetY = 0f,
+                            textContent = "",
                         ),
                         onVideoDisplaySize = { vwPx, vhPx ->
                             // 用播放器真实尺寸校正源宽高比,让预览几何与导出 Crop 同源(否则框≠导出)。
@@ -400,6 +487,7 @@ fun PreviewScreen(
                                 translationY = cy * size.height / 2f * s
                             },
                     )
+
                 }
                 // 白色预览框:画在播放器**外缘**——盒子比裁切窗口大一圈(2dp),边线落在窗口外侧,
                 // 不再覆盖视频边缘像素。与裁切窗口同心(同在居中的手势 Box 内)。
@@ -409,6 +497,136 @@ fun PreviewScreen(
                         .height(vh + 4.dp)
                         .border(2.dp, Color.White),
                 )
+
+                // P13 文字贴纸:放在手势 Box 内(不被窗口 clip,角标可探出框外)。
+                // 坐标系:窗口左上角在手势 Box 内的原点 = ((父宽-vw)/2, (父高-vh)/2)。
+                if (textBitmap != null) {
+                    val hwFrac = textBitmap.width / (2f * winWPx)
+                    val hhFrac = textBitmap.height / (2f * winHPx)
+                    val cx = if (hwFrac >= 0.5f) 0.5f else state.textPosX.coerceIn(hwFrac, 1f - hwFrac)
+                    val cy = if (hhFrac >= 0.5f) 0.5f else state.textPosY.coerceIn(hhFrac, 1f - hhFrac)
+                    val originX = (parentW - vw) / 2
+                    val originY = (parentH - vh) / 2
+                    val leftDp = originX + with(density) { ((cx - hwFrac) * winWPx).toDp() }
+                    val topDp = originY + with(density) { ((cy - hhFrac) * winHPx).toDp() }
+                    val boxWDp = with(density) { textBitmap.width.toDp() }
+                    val boxHDp = with(density) { textBitmap.height.toDp() }
+
+                    // 文字本体:单击选中;拖动移动 + 双指缩放(同时置选中)。
+                    Image(
+                        bitmap = textBitmap,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(leftDp, topDp)
+                            .size(boxWDp, boxHDp)
+                            .pointerInput(Unit) {
+                                detectTapGestures(onTap = { textSelected = true })
+                            }
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, pan, zoom, _ ->
+                                    textSelected = true
+                                    applyTextTransform(pan, zoom)
+                                }
+                            },
+                    )
+
+                    // 选中态:矩形框 + 右上✕删除 / 左下编辑 / 右下拉伸。
+                    if (textSelected) {
+                        val framePad = 6.dp
+                        val handle = 24.dp
+                        Box(
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .offset(leftDp - framePad, topDp - framePad)
+                                .size(boxWDp + framePad * 2, boxHDp + framePad * 2)
+                                .border(1.5.dp, Color.White),
+                        )
+                        // 右上 ✕:删除文字。
+                        Box(
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .offset(
+                                    leftDp + boxWDp + framePad - handle / 2,
+                                    topDp - framePad - handle / 2,
+                                )
+                                .size(handle)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .clickable {
+                                    textSelected = false
+                                    onChange(currentState.copy(textContent = ""))
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.text_remove),
+                                tint = Color.Black,
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                        // 左下 编辑:内容/加粗/颜色。
+                        Box(
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .offset(
+                                    leftDp - framePad - handle / 2,
+                                    topDp + boxHDp + framePad - handle / 2,
+                                )
+                                .size(handle)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .clickable { showTextDialog = true },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Edit,
+                                contentDescription = stringResource(R.string.edit),
+                                tint = Color.Black,
+                                modifier = Modifier.size(13.dp),
+                            )
+                        }
+                        // 右下 拉伸:拖动等比改文字框大小(对角增量 → zoom)。
+                        Box(
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .offset(
+                                    leftDp + boxWDp + framePad - handle / 2,
+                                    topDp + boxHDp + framePad - handle / 2,
+                                )
+                                .size(handle)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .pointerInput(Unit) {
+                                    detectDragGestures { change, drag ->
+                                        change.consume()
+                                        val (win, hw2, hh2) = textGeo
+                                        val (w, h) = win
+                                        val boxW = (hw2 * 2f * w).coerceAtLeast(1f)
+                                        val boxH = (hh2 * 2f * h).coerceAtLeast(1f)
+                                        val zoom = 1f + (drag.x + drag.y) / (boxW + boxH)
+                                        applyTextTransform(Offset.Zero, zoom)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Canvas(Modifier.size(11.dp)) {
+                                drawLine(
+                                    Color.Black,
+                                    Offset(0f, size.height), Offset(size.width, 0f),
+                                    strokeWidth = 2f,
+                                )
+                                drawLine(
+                                    Color.Black,
+                                    Offset(size.width * 0.5f, size.height),
+                                    Offset(size.width, size.height * 0.5f),
+                                    strokeWidth = 2f,
+                                )
+                            }
+                        }
+                    }
+                }
             }
             // 手势提示:半透明胶囊,叠在预览底部居中,不挡操作(无点击)。
             Text(
@@ -616,6 +834,81 @@ fun PreviewScreen(
                 }
             }
         }
+    }
+
+    // P13 文字编辑对话框:内容 + 加粗 + 颜色圆点(可左右滑);OK 应用,Remove 清除。
+    if (showTextDialog) {
+        var draft by remember { mutableStateOf(state.textContent) }
+        var draftColor by remember { mutableStateOf(state.textColor) }
+        var draftBold by remember { mutableStateOf(state.textBold) }
+        AlertDialog(
+            onDismissRequest = { showTextDialog = false },
+            title = { Text(stringResource(R.string.text_dialog_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it.take(TextOverlayRenderer.MAX_CHARS) },
+                        placeholder = { Text(stringResource(R.string.text_hint)) },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    FilterChip(
+                        selected = draftBold,
+                        onClick = { draftBold = !draftBold },
+                        label = { Text(stringResource(R.string.text_bold)) },
+                    )
+                    // 颜色圆点:横向可滑;选中加主题色粗环。
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        TEXT_COLORS.forEach { c ->
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(c))
+                                    .border(
+                                        width = if (draftColor == c) 3.dp else 1.dp,
+                                        color = if (draftColor == c) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            Color.Gray
+                                        },
+                                        shape = CircleShape,
+                                    )
+                                    .clickable { draftColor = c },
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showTextDialog = false
+                    textSelected = true
+                    onStateChange(
+                        state.copy(
+                            textContent = draft.trim(),
+                            textColor = draftColor,
+                            textBold = draftBold,
+                        )
+                    )
+                }) { Text(stringResource(R.string.ok)) }
+            },
+            dismissButton = {
+                if (state.textContent.isNotBlank()) {
+                    OutlinedButton(onClick = {
+                        showTextDialog = false
+                        textSelected = false
+                        onStateChange(state.copy(textContent = ""))
+                    }) { Text(stringResource(R.string.text_remove)) }
+                }
+            },
+        )
     }
 
     // 导出成功对话框:标题右侧关闭按钮,正文提示已存相册,主操作为分享。

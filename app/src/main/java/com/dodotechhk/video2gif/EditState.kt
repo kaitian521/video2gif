@@ -64,6 +64,18 @@ data class EditState(
     val maxFps: Int = 10,
     /** P9 导出格式:默认 GIF;mp4 直出,GIF/WebP 对中间 mp4 二次转码([FormatConverter])。 */
     val format: ExportFormat = ExportFormat.Gif,
+    /** P13 文字贴字:内容(空 = 无字幕,全程显示、不分时段)。 */
+    val textContent: String = "",
+    /** P13 文字填充色(ARGB);描边为自动反差色([TextOverlayRenderer.strokeColorFor])。 */
+    val textColor: Int = android.graphics.Color.WHITE,
+    /** P13 是否加粗。 */
+    val textBold: Boolean = true,
+    /** P13 文字缩放(相对基准布局,1 = 基准):等比缩放,**换行断点/框比例不变**;夹在 [TEXT_SCALE_MIN, TEXT_SCALE_MAX]。 */
+    val textScale: Float = 1f,
+    /** P13 文字中心在**裁切后输出窗口**的相对位置(0..1,x 向右 y 向下);字幕跟成品走,不贴源帧。 */
+    val textPosX: Float = 0.5f,
+    /** 同上,纵向;默认贴底部。 */
+    val textPosY: Float = 0.85f,
 ) {
     /** 源视频显示宽高比(宽/高);读不到尺寸时回退 16:9。供截取页按比例定宽用。 */
     val sourceAspectRatio: Float

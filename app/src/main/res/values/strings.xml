@@ -38,6 +38,14 @@
 
     <!-- Preview -->
     <string name="preview_title">Preview</string>
+    <string name="text_button">Text</string>
+    <string name="text_dialog_title">Add Text</string>
+    <string name="text_hint">Type your caption</string>
+    <string name="text_remove">Remove</string>
+    <string name="text_bold">Bold</string>
+    <string name="edit">Edit</string>
+    <string name="resize">Resize</string>
+    <string name="ok">OK</string>
     <string name="preview_gesture_hint">Pinch to zoom · Drag to move</string>
     <string name="speed">Speed</string>
     <string name="aspect_original">Original</string>
