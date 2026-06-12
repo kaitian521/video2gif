@@ -26,11 +26,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
@@ -62,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -882,16 +885,55 @@ fun PreviewScreen(
                 )
 
                 // 统一的「标题在上、选项在下」分组:标题用 titleSmall 突出层次。
+                // 选项行可横滚时,两端加渐隐遮罩(右端附小箭头)提示"还有更多选项";
+                // 滚到尽头自动消失。遮罩色与 BottomSheet 底色一致,渐隐自然。
                 @Composable
                 fun OptionSection(title: String, chips: @Composable () -> Unit) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(title, style = MaterialTheme.typography.titleSmall)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) { chips() }
+                        val scroll = rememberScrollState()
+                        val sheetColor = MaterialTheme.colorScheme.surfaceContainerLow
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(scroll),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) { chips() }
+                            if (scroll.canScrollBackward) {
+                                Box(
+                                    Modifier
+                                        .matchParentSize()
+                                        .wrapContentWidth(Alignment.Start)
+                                        .width(28.dp)
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                listOf(sheetColor, Color.Transparent)
+                                            )
+                                        )
+                                )
+                            }
+                            if (scroll.canScrollForward) {
+                                Box(
+                                    Modifier
+                                        .matchParentSize()
+                                        .wrapContentWidth(Alignment.End)
+                                        .width(40.dp)
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                listOf(Color.Transparent, sheetColor)
+                                            )
+                                        ),
+                                    contentAlignment = Alignment.CenterEnd,
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
