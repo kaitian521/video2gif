@@ -58,14 +58,14 @@ data class EditState(
      */
     val speed: Float = 1f,
     /** P8 清晰度档位:决定 mp4 码率(k×W×H×maxFps)/GIF 颜色抖动/WebP q;**不影响像素几何与帧率**。 */
-    val quality: ExportQuality = ExportQuality.Medium,
+    val quality: ExportQuality = ExportQuality.High,
     /**
      * 最大输出帧率(UI 五档 10/15/20/25/30):mp4 `setFrameRate` 上限(speed>1 防爆高,§5.4),
      * GIF/WebP 的 `fps` 滤镜直接用它。默认 10(体积优先;上次导出的选择会覆盖,见 [ExportPrefs])。
      */
     val maxFps: Int = 10,
-    /** P9 导出格式:默认 GIF;mp4 直出,GIF/WebP 对中间 mp4 二次转码([FormatConverter])。 */
-    val format: ExportFormat = ExportFormat.Gif,
+    /** P9 导出格式:默认 WebP(同画质体积远小于 GIF);mp4 直出,GIF/WebP 对中间 mp4 二次转码([FormatConverter])。 */
+    val format: ExportFormat = ExportFormat.WebP,
     /** P13 文字贴字:多条文字(空列表 = 无字幕;全程显示、不分时段)。见 [TextItem]。 */
     val texts: List<TextItem> = emptyList(),
 ) {
