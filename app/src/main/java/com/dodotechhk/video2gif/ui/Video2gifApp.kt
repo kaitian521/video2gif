@@ -113,12 +113,17 @@ fun Video2gifApp(modifier: Modifier = Modifier) {
             }
 
             Screen.Preview -> {
+                // 预览页 → 截取页:全部效果参数重置(返回即放弃本次预览的编辑)。
+                val backToTrim = {
+                    editState = editState?.resetEffects()
+                    screen = Screen.Trim
+                }
                 // 系统返回键:预览页 → 回到截取页(而非退到后台)。
-                BackHandler { screen = Screen.Trim }
+                BackHandler { backToTrim() }
                 PreviewScreen(
                     state = current,
                     onStateChange = { editState = it },
-                    onBack = { screen = Screen.Trim },
+                    onBack = backToTrim,
                     modifier = modifier,
                 )
             }

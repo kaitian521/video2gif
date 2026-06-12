@@ -49,7 +49,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.widget.Toast
 import androidx.compose.ui.res.stringResource
-import com.dodotechhk.video2gif.AspectRatio
 import com.dodotechhk.video2gif.ClipConstraints
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.R
@@ -176,16 +175,9 @@ fun TrimScreen(
             val w = minOf(previewHeight * ratio, maxWidth)
             val h = w / ratio
             VideoPreview(
-                // 截取页只看原始画面:预览页设置的旋转/比例/缩放/偏移/文字一律不带
-                // (效果只在预览页可视化、导出时生效)。
-                state = state.copy(
-                    aspect = AspectRatio.Original,
-                    scale = 1f,
-                    rotation = 0,
-                    offsetX = 0f,
-                    offsetY = 0f,
-                    texts = emptyList(),
-                ),
+                // 截取页只看原始画面:预览页设置的全部效果(旋转/比例/缩放/偏移/变速/文字)
+                // 一律不带(效果只在预览页可视化、导出时生效)。
+                state = state.resetEffects(),
                 onPositionChange = { positionMs = it },
                 onVideoDisplaySize = { vwPx, vhPx ->
                     // 用播放器真实尺寸校正源宽高比(MMR 方形像素假设可能不符);早校正,预览页直接用对。

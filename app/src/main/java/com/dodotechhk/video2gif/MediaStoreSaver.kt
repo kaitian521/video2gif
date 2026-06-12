@@ -9,6 +9,9 @@ import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 把产物发布到系统相册(实施计划 P10 雏形 / 技术方案 §5.1 存储)。
@@ -23,6 +26,16 @@ object MediaStoreSaver {
     private const val DIR = "Video2gif"
 
     /**
+     * 默认文件名:可读时间戳(如 `video2gif_20260612_193045.webp`)。
+     * 相册 UI 常截断长文件名,epoch 毫秒看起来像一串相同的「video2gif_17…」;
+     * 同秒重名由 MediaStore 自动追加 ` (1)` 兜底(API 29+)。
+     */
+    private fun defaultName(extension: String): String {
+        val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        return "video2gif_$ts.$extension"
+    }
+
+    /**
      * 把 [srcFile] 按 [format] 复制进系统相册,返回其 `content://` Uri;失败返回 null。
      * 在 IO 线程执行,可从主线程的协程直接调用。
      */
@@ -30,7 +43,7 @@ object MediaStoreSaver {
         context: Context,
         srcFile: File,
         format: ExportFormat,
-        displayName: String = "video2gif_${System.currentTimeMillis()}.${format.extension}",
+        displayName: String = defaultName(format.extension),
     ): Uri? = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         val nowMs = System.currentTimeMillis()
@@ -108,6 +121,6 @@ object MediaStoreSaver {
     suspend fun saveVideo(
         context: Context,
         srcFile: File,
-        displayName: String = "video2gif_${System.currentTimeMillis()}.mp4",
+        displayName: String = defaultName("mp4"),
     ): Uri? = save(context, srcFile, ExportFormat.Mp4, displayName)
 }
