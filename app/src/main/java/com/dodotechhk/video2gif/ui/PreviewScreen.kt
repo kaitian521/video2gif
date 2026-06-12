@@ -41,11 +41,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -78,6 +79,7 @@ import com.dodotechhk.video2gif.MediaStoreSaver
 import com.dodotechhk.video2gif.R
 import com.dodotechhk.video2gif.TEXT_SCALE_MAX
 import com.dodotechhk.video2gif.TEXT_SCALE_MIN
+import com.dodotechhk.video2gif.TextItem
 import com.dodotechhk.video2gif.TextOverlayRenderer
 import com.dodotechhk.video2gif.centerCropHalfExtents
 import com.dodotechhk.video2gif.clampedCropCenter
@@ -158,11 +160,14 @@ fun PreviewScreen(
     }
     // 导出成功对话框(面板收起后弹出,提供分享入口)。
     var showSuccessDialog by remember(state.sourceUri) { mutableStateOf(false) }
-    // P13 文字编辑对话框。
+    // P13 文字编辑对话框(editingTextId = null 表示新增)。
     var showTextDialog by remember(state.sourceUri) { mutableStateOf(false) }
-    // P13 文字选中态:选中显示矩形框+角标,双指归文字;点空白取消。
-    var textSelected by remember(state.sourceUri) { mutableStateOf(false) }
-    val textSelectedNow by rememberUpdatedState(textSelected)
+    var editingTextId by remember(state.sourceUri) { mutableStateOf<Long?>(null) }
+    // P13 选中的文字 id:选中显示矩形框+角标,双指归该文字;点空白取消。
+    var selectedTextId by remember(state.sourceUri) { mutableStateOf<Long?>(null) }
+    val selectedTextIdNow by rememberUpdatedState(selectedTextId)
+    // P13 待删除文字 id(二次确认弹窗)。
+    var pendingDeleteTextId by remember(state.sourceUri) { mutableStateOf<Long?>(null) }
 
     // 结果提示:成功/失败都 Toast(面板已收起或被关掉时也能看到)。
     val toast: (String) -> Unit = { msg ->
@@ -328,10 +333,11 @@ fun PreviewScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
-            // P13 文字贴字入口。
-            TextButton(onClick = { showTextDialog = true }) {
-                Text(stringResource(R.string.text_button))
-            }
+            // P13 新增文字入口(按钮样式,可加多条)。
+            Button(onClick = {
+                editingTextId = null
+                showTextDialog = true
+            }) { Text(stringResource(R.string.text_button)) }
         }
 
         // 预览:无取景框,裁切窗口(外框)**严格等于所选比例**。
@@ -366,48 +372,49 @@ fun PreviewScreen(
                 with(density) { videoW.toPx() } to with(density) { videoH.toPx() },
             )
 
-            // P13 文字几何:窗口 px、同源 bitmap、半宽高(先于手势 Box 计算,供选中态路由用)。
+            // P13 文字几何:窗口 px + 各条文字的同源 bitmap(key=id 稳定缓存)。
             val winWPx = with(density) { vw.toPx() }
             val winHPx = with(density) { vh.toPx() }
-            val textBitmap = remember(
-                state.textContent, state.textColor, state.textBold, state.textScale,
-                winWPx, winHPx,
-            ) {
-                if (state.textContent.isBlank()) null
-                else TextOverlayRenderer.renderScaled(
-                    content = state.textContent,
-                    fillColor = state.textColor,
-                    bold = state.textBold,
-                    winWPx = winWPx.toInt(),
-                    winHPx = winHPx.toInt(),
-                    scale = state.textScale,
-                )?.asImageBitmap()
+            val textBitmaps: Map<Long, ImageBitmap?> = state.texts.associate { item ->
+                item.id to key(item.id) {
+                    remember(item, winWPx, winHPx) {
+                        TextOverlayRenderer.renderScaled(
+                            content = item.content,
+                            fillColor = item.fillColor,
+                            strokeColor = item.strokeColor,
+                            bold = item.bold,
+                            winWPx = winWPx.toInt(),
+                            winHPx = winHPx.toInt(),
+                            scale = item.scale,
+                        )?.asImageBitmap()
+                    }
+                }
             }
-            val textGeo by rememberUpdatedState(
-                Triple(
-                    winWPx to winHPx,
-                    (textBitmap?.width ?: 0) / (2f * winWPx),
-                    (textBitmap?.height ?: 0) / (2f * winHPx),
-                ),
-            )
-            // 文字移动/缩放共用入口:整框夹紧(不溢出)。选中态外层手势、文字本体、拉伸角标都走这。
-            val applyTextTransform by rememberUpdatedState<(Offset, Float) -> Unit> { pan, zoom ->
+            val bitmapsNow by rememberUpdatedState(textBitmaps)
+            val winPxNow by rememberUpdatedState(winWPx to winHPx)
+            // 指定文字的移动/缩放共用入口:整框夹紧(不溢出)、等比(断点不变 → 框比例恒定)。
+            val applyTextTransformFn: (Long, Offset, Float) -> Unit = transform@{ id, pan, zoom ->
                 val cur = currentState
-                val (win, hw, hh) = textGeo
-                val (w, h) = win
-                // 缩放上限按窗口动态夹紧(整框不溢出);断点不变 → 框比例恒定。
+                val item = cur.texts.find { it.id == id } ?: return@transform
+                val bmp = bitmapsNow[id] ?: return@transform
+                val (w, h) = winPxNow
+                val hw = bmp.width / (2f * w)
+                val hh = bmp.height / (2f * h)
                 val zoomMax = minOf(
                     if (hw > 0f) 0.475f / hw else TEXT_SCALE_MAX,
                     if (hh > 0f) 0.45f / hh else TEXT_SCALE_MAX,
                 )
                 val effZoom = zoom.coerceAtMost(zoomMax)
-                val ns = (cur.textScale * effZoom).coerceIn(TEXT_SCALE_MIN, TEXT_SCALE_MAX)
-                var nx = cur.textPosX + pan.x / w
-                var ny = cur.textPosY + pan.y / h
+                val ns = (item.scale * effZoom).coerceIn(TEXT_SCALE_MIN, TEXT_SCALE_MAX)
+                var nx = item.posX + pan.x / w
+                var ny = item.posY + pan.y / h
                 nx = if (hw >= 0.5f) 0.5f else nx.coerceIn(hw, 1f - hw)
                 ny = if (hh >= 0.5f) 0.5f else ny.coerceIn(hh, 1f - hh)
-                onChange(cur.copy(textScale = ns, textPosX = nx, textPosY = ny))
+                onChange(cur.copy(texts = cur.texts.map {
+                    if (it.id == id) it.copy(scale = ns, posX = nx, posY = ny) else it
+                }))
             }
+            val applyTextTransform by rememberUpdatedState(applyTextTransformFn)
 
             Box(
                 modifier = Modifier
@@ -416,8 +423,8 @@ fun PreviewScreen(
                     // P13:文字选中时,手势整体改道文字(缩放/移动文字,不动取景)。
                     .pointerInput(Unit) {
                         detectTransformGestures { _, pan, zoom, _ ->
-                            if (textSelectedNow) {
-                                applyTextTransform(pan, zoom)
+                            selectedTextIdNow?.let { id ->
+                                applyTextTransform(id, pan, zoom)
                                 return@detectTransformGestures
                             }
                             val s = (currentState.scale * zoom).coerceIn(1f, MAX_SCALE)
@@ -436,7 +443,7 @@ fun PreviewScreen(
                     // 单击空白:取消文字选中(矩形框消失);双击复位取景缩放+位置。
                     .pointerInput(Unit) {
                         detectTapGestures(
-                            onTap = { textSelected = false },
+                            onTap = { selectedTextId = null },
                             onDoubleTap = {
                                 onChange(currentState.copy(scale = 1f, offsetX = 0f, offsetY = 0f))
                             },
@@ -461,7 +468,7 @@ fun PreviewScreen(
                             scale = 1f,
                             offsetX = 0f,
                             offsetY = 0f,
-                            textContent = "",
+                            texts = emptyList(),
                         ),
                         onVideoDisplaySize = { vwPx, vhPx ->
                             // 用播放器真实尺寸校正源宽高比,让预览几何与导出 Crop 同源(否则框≠导出)。
@@ -498,131 +505,137 @@ fun PreviewScreen(
                         .border(2.dp, Color.White),
                 )
 
-                // P13 文字贴纸:放在手势 Box 内(不被窗口 clip,角标可探出框外)。
-                // 坐标系:窗口左上角在手势 Box 内的原点 = ((父宽-vw)/2, (父高-vh)/2)。
-                if (textBitmap != null) {
-                    val hwFrac = textBitmap.width / (2f * winWPx)
-                    val hhFrac = textBitmap.height / (2f * winHPx)
-                    val cx = if (hwFrac >= 0.5f) 0.5f else state.textPosX.coerceIn(hwFrac, 1f - hwFrac)
-                    val cy = if (hhFrac >= 0.5f) 0.5f else state.textPosY.coerceIn(hhFrac, 1f - hhFrac)
-                    val originX = (parentW - vw) / 2
-                    val originY = (parentH - vh) / 2
-                    val leftDp = originX + with(density) { ((cx - hwFrac) * winWPx).toDp() }
-                    val topDp = originY + with(density) { ((cy - hhFrac) * winHPx).toDp() }
-                    val boxWDp = with(density) { textBitmap.width.toDp() }
-                    val boxHDp = with(density) { textBitmap.height.toDp() }
+                // P13 文字贴纸(多条):放在手势 Box 内(不被窗口 clip,角标可探出框外)。
+                // 坐标系:窗口左上角原点 = ((父宽-vw)/2, (父高-vh)/2)。
+                val originX = (parentW - vw) / 2
+                val originY = (parentH - vh) / 2
+                state.texts.forEach { item ->
+                    key(item.id) {
+                        val bmp = textBitmaps[item.id]
+                        if (bmp != null) {
+                            val hwFrac = bmp.width / (2f * winWPx)
+                            val hhFrac = bmp.height / (2f * winHPx)
+                            val cx = if (hwFrac >= 0.5f) 0.5f else item.posX.coerceIn(hwFrac, 1f - hwFrac)
+                            val cy = if (hhFrac >= 0.5f) 0.5f else item.posY.coerceIn(hhFrac, 1f - hhFrac)
+                            val leftDp = originX + with(density) { ((cx - hwFrac) * winWPx).toDp() }
+                            val topDp = originY + with(density) { ((cy - hhFrac) * winHPx).toDp() }
+                            val boxWDp = with(density) { bmp.width.toDp() }
+                            val boxHDp = with(density) { bmp.height.toDp() }
 
-                    // 文字本体:单击选中;拖动移动 + 双指缩放(同时置选中)。
-                    Image(
-                        bitmap = textBitmap,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .offset(leftDp, topDp)
-                            .size(boxWDp, boxHDp)
-                            .pointerInput(Unit) {
-                                detectTapGestures(onTap = { textSelected = true })
-                            }
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, pan, zoom, _ ->
-                                    textSelected = true
-                                    applyTextTransform(pan, zoom)
-                                }
-                            },
-                    )
-
-                    // 选中态:矩形框 + 右上✕删除 / 左下编辑 / 右下拉伸。
-                    if (textSelected) {
-                        val framePad = 6.dp
-                        val handle = 24.dp
-                        Box(
-                            Modifier
-                                .align(Alignment.TopStart)
-                                .offset(leftDp - framePad, topDp - framePad)
-                                .size(boxWDp + framePad * 2, boxHDp + framePad * 2)
-                                .border(1.5.dp, Color.White),
-                        )
-                        // 右上 ✕:删除文字。
-                        Box(
-                            Modifier
-                                .align(Alignment.TopStart)
-                                .offset(
-                                    leftDp + boxWDp + framePad - handle / 2,
-                                    topDp - framePad - handle / 2,
-                                )
-                                .size(handle)
-                                .clip(CircleShape)
-                                .background(Color.White)
-                                .clickable {
-                                    textSelected = false
-                                    onChange(currentState.copy(textContent = ""))
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Filled.Close,
-                                contentDescription = stringResource(R.string.text_remove),
-                                tint = Color.Black,
-                                modifier = Modifier.size(14.dp),
-                            )
-                        }
-                        // 左下 编辑:内容/加粗/颜色。
-                        Box(
-                            Modifier
-                                .align(Alignment.TopStart)
-                                .offset(
-                                    leftDp - framePad - handle / 2,
-                                    topDp + boxHDp + framePad - handle / 2,
-                                )
-                                .size(handle)
-                                .clip(CircleShape)
-                                .background(Color.White)
-                                .clickable { showTextDialog = true },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Filled.Edit,
-                                contentDescription = stringResource(R.string.edit),
-                                tint = Color.Black,
-                                modifier = Modifier.size(13.dp),
-                            )
-                        }
-                        // 右下 拉伸:拖动等比改文字框大小(对角增量 → zoom)。
-                        Box(
-                            Modifier
-                                .align(Alignment.TopStart)
-                                .offset(
-                                    leftDp + boxWDp + framePad - handle / 2,
-                                    topDp + boxHDp + framePad - handle / 2,
-                                )
-                                .size(handle)
-                                .clip(CircleShape)
-                                .background(Color.White)
-                                .pointerInput(Unit) {
-                                    detectDragGestures { change, drag ->
-                                        change.consume()
-                                        val (win, hw2, hh2) = textGeo
-                                        val (w, h) = win
-                                        val boxW = (hw2 * 2f * w).coerceAtLeast(1f)
-                                        val boxH = (hh2 * 2f * h).coerceAtLeast(1f)
-                                        val zoom = 1f + (drag.x + drag.y) / (boxW + boxH)
-                                        applyTextTransform(Offset.Zero, zoom)
+                            // 文字本体:单击选中;拖动移动 + 双指缩放(同时置选中)。
+                            Image(
+                                bitmap = bmp,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .offset(leftDp, topDp)
+                                    .size(boxWDp, boxHDp)
+                                    .pointerInput(item.id) {
+                                        detectTapGestures(onTap = { selectedTextId = item.id })
                                     }
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Canvas(Modifier.size(11.dp)) {
-                                drawLine(
-                                    Color.Black,
-                                    Offset(0f, size.height), Offset(size.width, 0f),
-                                    strokeWidth = 2f,
+                                    .pointerInput(item.id) {
+                                        detectTransformGestures { _, pan, zoom, _ ->
+                                            selectedTextId = item.id
+                                            applyTextTransform(item.id, pan, zoom)
+                                        }
+                                    },
+                            )
+
+                            // 选中态:矩形框 + 右上✕删除 / 左下编辑 / 右下拉伸。
+                            if (selectedTextId == item.id) {
+                                val framePad = 6.dp
+                                val handle = 24.dp
+                                Box(
+                                    Modifier
+                                        .align(Alignment.TopStart)
+                                        .offset(leftDp - framePad, topDp - framePad)
+                                        .size(boxWDp + framePad * 2, boxHDp + framePad * 2)
+                                        .border(1.5.dp, Color.White),
                                 )
-                                drawLine(
-                                    Color.Black,
-                                    Offset(size.width * 0.5f, size.height),
-                                    Offset(size.width, size.height * 0.5f),
-                                    strokeWidth = 2f,
-                                )
+                                // 右上 ✕:删除(二次确认)。
+                                Box(
+                                    Modifier
+                                        .align(Alignment.TopStart)
+                                        .offset(
+                                            leftDp + boxWDp + framePad - handle / 2,
+                                            topDp - framePad - handle / 2,
+                                        )
+                                        .size(handle)
+                                        .clip(CircleShape)
+                                        .background(Color.White)
+                                        .clickable { pendingDeleteTextId = item.id },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = stringResource(R.string.text_remove),
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
+                                // 左下 编辑:内容/加粗/颜色/描边。
+                                Box(
+                                    Modifier
+                                        .align(Alignment.TopStart)
+                                        .offset(
+                                            leftDp - framePad - handle / 2,
+                                            topDp + boxHDp + framePad - handle / 2,
+                                        )
+                                        .size(handle)
+                                        .clip(CircleShape)
+                                        .background(Color.White)
+                                        .clickable {
+                                            editingTextId = item.id
+                                            showTextDialog = true
+                                        },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Edit,
+                                        contentDescription = stringResource(R.string.edit),
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(13.dp),
+                                    )
+                                }
+                                // 右下 拉伸:拖动等比改文字框大小(对角增量 → zoom)。
+                                Box(
+                                    Modifier
+                                        .align(Alignment.TopStart)
+                                        .offset(
+                                            leftDp + boxWDp + framePad - handle / 2,
+                                            topDp + boxHDp + framePad - handle / 2,
+                                        )
+                                        .size(handle)
+                                        .clip(CircleShape)
+                                        .background(Color.White)
+                                        .pointerInput(item.id) {
+                                            detectDragGestures { change, drag ->
+                                                change.consume()
+                                                val curBmp = bitmapsNow[item.id]
+                                                if (curBmp != null) {
+                                                    val boxW = curBmp.width.toFloat().coerceAtLeast(1f)
+                                                    val boxH = curBmp.height.toFloat().coerceAtLeast(1f)
+                                                    val zoom = 1f + (drag.x + drag.y) / (boxW + boxH)
+                                                    applyTextTransform(item.id, Offset.Zero, zoom)
+                                                }
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Canvas(Modifier.size(11.dp)) {
+                                        drawLine(
+                                            Color.Black,
+                                            Offset(0f, size.height), Offset(size.width, 0f),
+                                            strokeWidth = 2f,
+                                        )
+                                        drawLine(
+                                            Color.Black,
+                                            Offset(size.width * 0.5f, size.height),
+                                            Offset(size.width, size.height * 0.5f),
+                                            strokeWidth = 2f,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -836,14 +849,61 @@ fun PreviewScreen(
         }
     }
 
-    // P13 文字编辑对话框:内容 + 加粗 + 颜色圆点(可左右滑);OK 应用,Remove 清除。
+    // P13 文字编辑对话框:内容 + 加粗 + 填充色/描边色两排圆点(可左右滑);OK 应用,Remove 删除。
     if (showTextDialog) {
-        var draft by remember { mutableStateOf(state.textContent) }
-        var draftColor by remember { mutableStateOf(state.textColor) }
-        var draftBold by remember { mutableStateOf(state.textBold) }
+        val editing = state.texts.find { it.id == editingTextId }
+        var draft by remember(editingTextId, showTextDialog) {
+            mutableStateOf(editing?.content ?: "")
+        }
+        var draftFill by remember(editingTextId, showTextDialog) {
+            mutableStateOf(editing?.fillColor ?: android.graphics.Color.WHITE)
+        }
+        var draftStroke by remember(editingTextId, showTextDialog) {
+            mutableStateOf(editing?.strokeColor ?: android.graphics.Color.BLACK)
+        }
+        var draftBold by remember(editingTextId, showTextDialog) {
+            mutableStateOf(editing?.bold ?: true)
+        }
+
+        // 圆点调色板行(填充/描边共用)。
+        @Composable
+        fun ColorDots(selected: Int, onPick: (Int) -> Unit) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                TEXT_COLORS.forEach { c ->
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(c))
+                            .border(
+                                width = if (selected == c) 3.dp else 1.dp,
+                                color = if (selected == c) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    Color.Gray
+                                },
+                                shape = CircleShape,
+                            )
+                            .clickable { onPick(c) },
+                    )
+                }
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { showTextDialog = false },
-            title = { Text(stringResource(R.string.text_dialog_title)) },
+            title = {
+                Text(
+                    stringResource(
+                        if (editing == null) R.string.text_dialog_title else R.string.edit
+                    )
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
@@ -858,54 +918,82 @@ fun PreviewScreen(
                         onClick = { draftBold = !draftBold },
                         label = { Text(stringResource(R.string.text_bold)) },
                     )
-                    // 颜色圆点:横向可滑;选中加主题色粗环。
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        TEXT_COLORS.forEach { c ->
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(c))
-                                    .border(
-                                        width = if (draftColor == c) 3.dp else 1.dp,
-                                        color = if (draftColor == c) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            Color.Gray
-                                        },
-                                        shape = CircleShape,
-                                    )
-                                    .clickable { draftColor = c },
-                            )
+                    Text(stringResource(R.string.text_color), style = MaterialTheme.typography.labelMedium)
+                    ColorDots(draftFill) { c ->
+                        // 换填充色时,若描边未被单独改过(仍是旧填充的反差色),跟随新反差色。
+                        if (draftStroke == TextOverlayRenderer.strokeColorFor(draftFill)) {
+                            draftStroke = TextOverlayRenderer.strokeColorFor(c)
                         }
+                        draftFill = c
                     }
+                    Text(stringResource(R.string.text_outline), style = MaterialTheme.typography.labelMedium)
+                    ColorDots(draftStroke) { draftStroke = it }
                 }
             },
             confirmButton = {
                 Button(onClick = {
                     showTextDialog = false
-                    textSelected = true
-                    onStateChange(
-                        state.copy(
-                            textContent = draft.trim(),
-                            textColor = draftColor,
-                            textBold = draftBold,
+                    val content = draft.trim()
+                    if (editing != null) {
+                        if (content.isBlank()) {
+                            pendingDeleteTextId = editing.id
+                        } else {
+                            onStateChange(
+                                state.copy(texts = state.texts.map {
+                                    if (it.id == editing.id) {
+                                        it.copy(
+                                            content = content,
+                                            fillColor = draftFill,
+                                            strokeColor = draftStroke,
+                                            bold = draftBold,
+                                        )
+                                    } else it
+                                })
+                            )
+                        }
+                    } else if (content.isNotBlank()) {
+                        val newId = (state.texts.maxOfOrNull { it.id } ?: 0L) + 1
+                        selectedTextId = newId
+                        onStateChange(
+                            state.copy(
+                                texts = state.texts + TextItem(
+                                    id = newId,
+                                    content = content,
+                                    fillColor = draftFill,
+                                    strokeColor = draftStroke,
+                                    bold = draftBold,
+                                )
+                            )
                         )
-                    )
+                    }
                 }) { Text(stringResource(R.string.ok)) }
             },
             dismissButton = {
-                if (state.textContent.isNotBlank()) {
+                if (editing != null) {
                     OutlinedButton(onClick = {
                         showTextDialog = false
-                        textSelected = false
-                        onStateChange(state.copy(textContent = ""))
+                        pendingDeleteTextId = editing.id
                     }) { Text(stringResource(R.string.text_remove)) }
+                }
+            },
+        )
+    }
+
+    // P13 删除文字二次确认(按 id)。
+    pendingDeleteTextId?.let { delId ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteTextId = null },
+            title = { Text(stringResource(R.string.text_delete_title)) },
+            confirmButton = {
+                Button(onClick = {
+                    if (selectedTextId == delId) selectedTextId = null
+                    onStateChange(state.copy(texts = state.texts.filterNot { it.id == delId }))
+                    pendingDeleteTextId = null
+                }) { Text(stringResource(R.string.delete)) }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { pendingDeleteTextId = null }) {
+                    Text(stringResource(R.string.cancel))
                 }
             },
         )

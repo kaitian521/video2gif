@@ -38,11 +38,15 @@
 
     <!-- Preview -->
     <string name="preview_title">Preview</string>
-    <string name="text_button">Text</string>
+    <string name="text_button">Add Text</string>
+    <string name="text_color">Color</string>
+    <string name="text_outline">Outline</string>
     <string name="text_dialog_title">Add Text</string>
     <string name="text_hint">Type your caption</string>
     <string name="text_remove">Remove</string>
     <string name="text_bold">Bold</string>
+    <string name="text_delete_title">Delete text?</string>
+    <string name="delete">Delete</string>
     <string name="edit">Edit</string>
     <string name="resize">Resize</string>
     <string name="ok">OK</string>

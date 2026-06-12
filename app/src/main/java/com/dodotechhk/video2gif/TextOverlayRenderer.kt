@@ -52,6 +52,7 @@ object TextOverlayRenderer {
     fun renderScaled(
         content: String,
         fillColor: Int,
+        strokeColor: Int,
         bold: Boolean,
         winWPx: Int,
         winHPx: Int,
@@ -62,7 +63,7 @@ object TextOverlayRenderer {
 
         val baseWrap = (winWPx * BASE_WRAP_FRAC).toInt().coerceAtLeast(8)
         val baseFont = fitBaseFontPx(text, bold, baseWrap, (winHPx * 0.9f).toInt())
-        return renderAt(text, fillColor, bold, baseFont * scale, ceil(baseWrap * scale).toInt())
+        return renderAt(text, fillColor, strokeColor, bold, baseFont * scale, ceil(baseWrap * scale).toInt())
     }
 
     /** scale=1 的基准字号:布局级测量,高度放不进 [maxHeightPx] 就降(纯函数、确定性)。 */
@@ -82,6 +83,7 @@ object TextOverlayRenderer {
     private fun renderAt(
         text: String,
         fillColor: Int,
+        strokeColor: Int,
         bold: Boolean,
         textSize: Float,
         wrapTotalPx: Int,
@@ -116,7 +118,7 @@ object TextOverlayRenderer {
             style = Paint.Style.STROKE
             this.strokeWidth = strokeWidth
             strokeJoin = Paint.Join.ROUND
-            color = strokeColorFor(fillColor)
+            color = strokeColor
         }
         makeLayout(text, strokePaint, wrapWidth).draw(canvas)
         fillLayout.draw(canvas)

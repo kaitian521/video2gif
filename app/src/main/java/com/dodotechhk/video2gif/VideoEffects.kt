@@ -36,35 +36,39 @@ fun buildVideoEffects(state: EditState): List<Effect> = buildList {
 }
 
 /**
- * P13 文字贴字 effect:与预览共用 [TextOverlayRenderer] 生成的 bitmap(同源 → WYSIWYG)。
- * bitmap 按**最终输出分辨率**生成;位置经夹紧保证整框不出画面(不溢出)。
+ * P13 文字贴字 effect(多条):与预览共用 [TextOverlayRenderer] 生成的 bitmap(同源 → WYSIWYG)。
+ * 每条 bitmap 按**最终输出分辨率**生成;位置经夹紧保证整框不出画面(不溢出)。
  */
 fun textOverlayEffect(state: EditState): OverlayEffect? {
-    if (state.textContent.isBlank()) return null
+    if (state.texts.isEmpty()) return null
     val outH = state.targetHeight
     val outW = (outH * state.outputAspectRatio).roundToInt()
-    val bitmap = TextOverlayRenderer.renderScaled(
-        content = state.textContent,
-        fillColor = state.textColor,
-        bold = state.textBold,
-        winWPx = outW,
-        winHPx = outH,
-        scale = state.textScale.coerceIn(TEXT_SCALE_MIN, TEXT_SCALE_MAX),
-    ) ?: return null
+    val overlays: List<TextureOverlay> = state.texts.mapNotNull { item ->
+        val bitmap = TextOverlayRenderer.renderScaled(
+            content = item.content,
+            fillColor = item.fillColor,
+            strokeColor = item.strokeColor,
+            bold = item.bold,
+            winWPx = outW,
+            winHPx = outH,
+            scale = item.scale.coerceIn(TEXT_SCALE_MIN, TEXT_SCALE_MAX),
+        ) ?: return@mapNotNull null
 
-    // 夹紧:文字中心使整框落在画面内(导出端兜底;预览手势已夹过)。
-    val halfW = bitmap.width / (2f * outW)
-    val halfH = bitmap.height / (2f * outH)
-    val px = if (halfW >= 0.5f) 0.5f else state.textPosX.coerceIn(halfW, 1f - halfW)
-    val py = if (halfH >= 0.5f) 0.5f else state.textPosY.coerceIn(halfH, 1f - halfH)
+        // 夹紧:文字中心使整框落在画面内(导出端兜底;预览手势已夹过)。
+        val halfW = bitmap.width / (2f * outW)
+        val halfH = bitmap.height / (2f * outH)
+        val px = if (halfW >= 0.5f) 0.5f else item.posX.coerceIn(halfW, 1f - halfW)
+        val py = if (halfH >= 0.5f) 0.5f else item.posY.coerceIn(halfH, 1f - halfH)
 
-    // 锚点:背景帧 NDC(x 右 y 上),(px,py) 是「x 右 y 下」的 0..1 → 转换;overlay 锚自身中心。
-    val settings = StaticOverlaySettings.Builder()
-        .setBackgroundFrameAnchor(2f * px - 1f, 1f - 2f * py)
-        .setOverlayFrameAnchor(0f, 0f)
-        .build()
-    val overlay: TextureOverlay = BitmapOverlay.createStaticBitmapOverlay(bitmap, settings)
-    return OverlayEffect(listOf(overlay))
+        // 锚点:背景帧 NDC(x 右 y 上),(px,py) 是「x 右 y 下」的 0..1 → 转换;overlay 锚自身中心。
+        val settings = StaticOverlaySettings.Builder()
+            .setBackgroundFrameAnchor(2f * px - 1f, 1f - 2f * py)
+            .setOverlayFrameAnchor(0f, 0f)
+            .build()
+        BitmapOverlay.createStaticBitmapOverlay(bitmap, settings)
+    }
+    if (overlays.isEmpty()) return null
+    return OverlayEffect(overlays)
 }
 
 /**
