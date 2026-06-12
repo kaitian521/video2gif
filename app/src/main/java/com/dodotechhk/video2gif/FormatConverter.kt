@@ -17,13 +17,18 @@ import java.io.File
  *
  * 档位参数(§10.2,2026-06 标定;**fps 不在档内**,由 [EditState.maxFps] 独立控制):
  *
- * | 档   | max_colors | dither       | 调色板         | webp q |
- * |------|------------|--------------|----------------|--------|
- * | 低   | 64         | none(非 off)| 全片一张(diff)| 50     |
- * | 中   | 256        | bayer        | 全片一张(diff)| 75     |
- * | 高   | 256        | sierra2_4a   | 全片一张(diff)| 90     |
- * | 超高 | 256        | sierra2_4a   | **逐帧**(single + paletteuse new=1) | 95 |
- * | Max  | 256        | sierra3(全 sierra,最重)| **逐帧** | 100 |
+ * | 档   | max_colors | dither       | 调色板         | diff_mode | webp q |
+ * |------|------------|--------------|----------------|-----------|--------|
+ * | 低   | 32         | none(非 off)| 全片一张(diff)| rectangle | 50     |
+ * | 中   | 128        | bayer        | 全片一张(diff)| rectangle | 75     |
+ * | 高   | 256        | sierra2_4a   | 全片一张(diff)| rectangle | 90     |
+ * | 超高 | 256        | sierra2_4a   | **逐帧**(single + paletteuse new=1) | 无 | 95 |
+ * | Max  | 256        | sierra3(全 sierra,最重)| **逐帧** | 无 | 100 |
+ *
+ * `diff_mode=rectangle`:每帧只重新量化/抖动运动矩形,静止区域逐字节复用上一帧
+ * → gif 编码器的 transdiff/offsetting(默认开)能把静止区域编成透明跳过,
+ * 静态背景素材实测低档 -29%、中档 -16%、高档持平,且静止区域无抖动闪烁。
+ * 逐帧调色板(new=1)下复用旧帧像素与逐帧新调色板互相抵触(实测 +5%),超高/Max 不开。
  */
 object FormatConverter {
 
@@ -39,16 +44,24 @@ object FormatConverter {
         fun cancel() = FFmpegKit.cancel(session.sessionId)
     }
 
-    private data class GifTier(val maxColors: Int, val dither: String, val perFramePalette: Boolean)
+    private data class GifTier(
+        val maxColors: Int,
+        val dither: String,
+        val perFramePalette: Boolean,
+        /** paletteuse `diff_mode=rectangle`:静止区域逐字节复用上一帧,换体积(见类注释)。 */
+        val rectDiff: Boolean,
+    )
 
     private fun gifTier(quality: ExportQuality) = when (quality) {
-        ExportQuality.Low -> GifTier(64, "none", perFramePalette = false)
-        ExportQuality.Medium -> GifTier(256, "bayer", perFramePalette = false)
-        ExportQuality.High -> GifTier(256, "sierra2_4a", perFramePalette = false)
+        // 低/中压缩颜色数(32/128):和 256 拉开肉眼可分的台阶,LZW 码字也更短。
+        ExportQuality.Low -> GifTier(32, "none", perFramePalette = false, rectDiff = true)
+        ExportQuality.Medium -> GifTier(128, "bayer", perFramePalette = false, rectDiff = true)
+        ExportQuality.High -> GifTier(256, "sierra2_4a", perFramePalette = false, rectDiff = true)
         // 超高/Max:逐帧调色板(stats_mode=single + paletteuse new=1),体积显著增大;
-        // Max 再换最重的全 sierra 抖动。
-        ExportQuality.ExtraHigh -> GifTier(256, "sierra2_4a", perFramePalette = true)
-        ExportQuality.Max -> GifTier(256, "sierra3", perFramePalette = true)
+        // Max 再换最重的全 sierra 抖动。逐帧调色板与矩形差分互斥(逐帧新调色板下复用
+        // 上一帧像素反而涨体积,实测 +5%),故两档都不开 rectDiff。
+        ExportQuality.ExtraHigh -> GifTier(256, "sierra2_4a", perFramePalette = true, rectDiff = false)
+        ExportQuality.Max -> GifTier(256, "sierra3", perFramePalette = true, rectDiff = false)
     }
 
     private fun webpQ(quality: ExportQuality) = when (quality) {
@@ -82,7 +95,9 @@ object FormatConverter {
             ExportFormat.Gif -> {
                 val t = gifTier(quality)
                 val statsMode = if (t.perFramePalette) "single" else "diff"
-                val use = "paletteuse=dither=${t.dither}" + if (t.perFramePalette) ":new=1" else ""
+                val use = "paletteuse=dither=${t.dither}" +
+                    (if (t.perFramePalette) ":new=1" else "") +
+                    (if (t.rectDiff) ":diff_mode=rectangle" else "")
                 arrayOf(
                     "-i", mp4File.absolutePath,
                     "-filter_complex",
