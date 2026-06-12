@@ -6,7 +6,7 @@ import android.content.Context
  * 上次导出选择的持久化(SharedPreferences):格式/分辨率/帧率/清晰度。
  *
  * - [applyTo]:导入构造初始 [EditState] 后调用,把上次导出的选择覆盖到默认值上
- *   (首次无记录时保持 EditState 的出厂默认:WebP / 360p / 10fps / 高)。
+ *   (首次无记录时保持 EditState 的出厂默认:WebP / 480p / 10fps / 高)。
  * - [save]:每次**发起导出**时调用(用户已确认的选择,无论导出成败都算「上次的选择」)。
  */
 object ExportPrefs {
