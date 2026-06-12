@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import com.dodotechhk.video2gif.EditState
 import com.dodotechhk.video2gif.R
 import com.dodotechhk.video2gif.ui.theme.ChipSelected
+import com.dodotechhk.video2gif.ui.theme.HomeBottomBarBackgroundDark
+import com.dodotechhk.video2gif.ui.theme.HomeBottomBarBackgroundLight
 
 /** 顶层页面。导入页之外的两步:截取(P2)与预览(P3)各自独立。 */
 private enum class Screen { Trim, Preview }
@@ -129,6 +132,9 @@ fun Video2gifApp(modifier: Modifier = Modifier) {
  */
 @Composable
 private fun HomeBottomBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
+    val barColor =
+        if (isSystemInDarkTheme()) HomeBottomBarBackgroundDark else HomeBottomBarBackgroundLight
+
     Box(
         // 导航栏 inset 已由外层 Scaffold 消费,这里只留视觉边距。
         modifier = Modifier
@@ -138,7 +144,7 @@ private fun HomeBottomBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
     ) {
         Surface(
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = barColor,
             shadowElevation = 6.dp,
         ) {
             Row(

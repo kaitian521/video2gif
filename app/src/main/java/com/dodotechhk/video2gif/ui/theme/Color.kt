@@ -31,6 +31,10 @@ val AddTextBlue = Color(0xFF3D8BFF)
 val HomeCardGradientStart = Color(0xFFFFB930)
 val HomeCardGradientEnd = Color(0xFFFF6A00)
 
+/** 首页底部 Tab 栏背景:替代 Material 默认灰,用低饱和暖橙与品牌橙协调。 */
+val HomeBottomBarBackgroundLight = Color(0xFFFFF1E3)
+val HomeBottomBarBackgroundDark = Color(0xFF3A2618)
+
 /** 截取页滑竿手柄强调色:与品牌橙一致,深色/浅色主题下都清晰可辨。 */
 val TrimHandle = KwaiOrange
 
