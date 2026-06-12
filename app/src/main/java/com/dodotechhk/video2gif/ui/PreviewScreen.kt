@@ -89,6 +89,8 @@ import com.dodotechhk.video2gif.centerCropHalfExtents
 import com.dodotechhk.video2gif.clampedCropCenter
 import com.dodotechhk.video2gif.withClampedOffsets
 import com.dodotechhk.video2gif.VideoExporter
+import com.dodotechhk.video2gif.works.ExportRecord
+import com.dodotechhk.video2gif.works.WorksDatabase
 import com.dodotechhk.video2gif.ui.theme.ChipSelected
 import kotlinx.coroutines.launch
 import java.io.File
@@ -186,8 +188,9 @@ fun PreviewScreen(
         android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
     }
 
-    // 把产物落相册并收尾(成功/失败都结束导出态)。
-    val finishWithSave: (File, ExportFormat, String) -> Unit = { file, format, detail ->
+    // 把产物落相册并收尾(成功/失败都结束导出态);成功后写入作品库(Creation 页)。
+    val finishWithSave: (File, ExportFormat, String, Int, Int, Long) -> Unit =
+        { file, format, detail, outW, outH, durMs ->
         scope.launch {
             val uri = MediaStoreSaver.save(context, file, format)
             // 中间产物/已复制完的 cache 文件都清掉(P10:不留残留)。
@@ -198,6 +201,17 @@ fun PreviewScreen(
             if (uri != null) {
                 hasExported = true
                 savedResult = uri to format
+                // 作品记录入库(产物本体在相册,这里只存索引)。
+                WorksDatabase.get(context).dao().insert(
+                    ExportRecord(
+                        uri = uri.toString(),
+                        format = format.name,
+                        width = outW,
+                        height = outH,
+                        durationMs = durMs,
+                        createdAt = System.currentTimeMillis(),
+                    )
+                )
                 val dir = if (format.isVideo) "Movies" else "Pictures"
                 exportStatus =
                     context.getString(R.string.status_saved_gallery, dir, format.label, detail)
@@ -251,7 +265,7 @@ fun PreviewScreen(
                     val size = "${result.width}×${result.height}, ${result.durationMs} ms"
                     if (!twoPhase) {
                         exportStatus = context.getString(R.string.status_export_ok_saving, size)
-                        finishWithSave(mp4File, ExportFormat.Mp4, size)
+                        finishWithSave(mp4File, ExportFormat.Mp4, size, result.width, result.height, result.durationMs)
                     } else {
                         // P9:对中间 mp4 跑 ffmpeg(fps+调色板/libwebp_anim,不 scale)。
                         // ffmpeg-kit 回调在后台线程,经 scope.launch 切回主线程更新 UI。
@@ -278,7 +292,7 @@ fun PreviewScreen(
                                         exportStatus = context.getString(
                                             R.string.status_convert_ok_saving, size,
                                         )
-                                        finishWithSave(outFile, format, size)
+                                        finishWithSave(outFile, format, size, result.width, result.height, result.durationMs)
                                     }
 
                                     is FormatConverter.Result.Error -> {
