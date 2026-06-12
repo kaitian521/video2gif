@@ -101,7 +101,7 @@ fun ImportScreen(
     Box(modifier = modifier.fillMaxSize()) {
         // 标题栏:显示 app 名(string 资源,与 launcher 一致)。
         Text(
-            stringResource(R.string.app_name),
+            stringResource(R.string.home_header),
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier
                 .align(Alignment.TopStart)

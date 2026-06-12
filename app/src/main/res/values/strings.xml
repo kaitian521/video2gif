@@ -3,6 +3,7 @@
     <string name="app_name" translatable="false">Video 2 Gif Webp - Animated Maker</string>
 
     <!-- Home -->
+    <string name="home_header">Gif Animated</string>
     <string name="home_title">Video to Gif</string>
     <string name="home_pick_video">Pick a video from your gallery</string>
 
@@ -12,6 +13,8 @@
     <string name="settings_terms">Terms of Service</string>
     <string name="settings_version">Version</string>
     <string name="settings_contact">Contact Us</string>
+    <string name="settings_clear_cache">Clear Cache</string>
+    <string name="toast_cache_cleared">Cache cleared, %1$s freed</string>
 
     <!-- Import -->
     <string name="import_too_short">Video too short (%1$d ms), needs more than %2$d ms</string>
