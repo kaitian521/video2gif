@@ -359,7 +359,7 @@ private fun WorkItem(
             }
             IconButton(onClick = onDelete) {
                 Icon(
-                    Icons.Filled.Close,
+                    Icons.Filled.Delete,
                     contentDescription = stringResource(R.string.delete),
                     modifier = Modifier.size(18.dp),
                 )
