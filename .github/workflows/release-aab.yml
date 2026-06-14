@@ -1,0 +1,56 @@
+name: Release AAB
+
+# 推送新 tag(如 v1.0.0)时自动出 release 包(AAB)并发布到 GitHub Releases。
+# 也支持在 Actions 页手动触发(workflow_dispatch)。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# 需要写权限才能创建 Release。
+permissions:
+  contents: write
+
+jobs:
+  release-aab:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 签名所需的 video2gif.jks 已随仓库提交,且密码写死在 app/build.gradle.kts,
+      # 因此无需额外的签名 secrets,checkout 后即可直接出已签名的 release 包。
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # 确保 SDK / 许可证就绪,AGP 9 会按需自动下载 compileSdk 37 等组件。
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Build release AAB
+        run: ./gradlew bundleRelease --no-daemon --stacktrace
+
+      # 保留构建产物(即使 Release 步骤失败也能下载)。
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          files: app/build/outputs/bundle/release/app-release.aab
+          generate_release_notes: true
